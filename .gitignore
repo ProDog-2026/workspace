@@ -1,0 +1,32 @@
+# Secrets and credentials (never commit)
+.env
+.env.*
+!.env.example
+**/credentials.json
+**/client_secret*.json
+**/token*.json
+**/*.pem
+**/*.key
+
+# Local runtimes and generated state
+.venv/
+.venv-*/
+**/.venv/
+**/.venv-*/
+**/node_modules/
+**/__pycache__/
+**/.pytest_cache/
+**/.mypy_cache/
+**/*.pid
+**/*.log
+**/dist/
+**/build/
+
+# Local model weights
+**/models/
+
+# OS and editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
