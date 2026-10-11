@@ -43,14 +43,7 @@ Claude, Codex 등 이 레포에서 일하는 모든 AI와 사람이 따르는 �
 - 커밋: `태그: 내용` (feat, fix, docs, style, refactor, chore)
 - PR은 `develop`으로 올리고, 1명 이상 승인 후 머지한다. `main`, `develop`에 직접 push하지 않는다.
 
-## 스킬
-
-- 원본은 `.agents/skills/`다. 여기서만 고친다.
-- `.claude/skills/`는 GitHub Action(`sync-skills`)이 PR마다 자동으로 복사한다. 직접 고치면 덮어써진다.
-- Codex는 `.agents/skills/`, Claude Code는 `.claude/skills/`를 자동으로 읽는다.
-
 ## 문서 작성
 
-- PDF, PPT, DOCX는 `to-markdown` 스킬로 md로 바꿔 원본 옆에 둔다.
-- 논문을 근거로 쓸 때는 `paper-reading` 스킬을 따르고 읽기 수준(1차, 2차, 원문 미확인)을 적는다.
+- 논문을 근거로 쓸 때는 읽기 수준(1차, 2차, 원문 미확인)을 적는다.
 - 외부 사실에는 출처 URL을 붙인다. 모르는 값은 `TBD`로 두고 지어내지 않는다.
