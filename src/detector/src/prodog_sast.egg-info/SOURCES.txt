@@ -1,0 +1,14 @@
+README.md
+pyproject.toml
+src/prodog_sast/__init__.py
+src/prodog_sast/cli.py
+src/prodog_sast/data.py
+src/prodog_sast/email_text.py
+src/prodog_sast/model.py
+src/prodog_sast.egg-info/PKG-INFO
+src/prodog_sast.egg-info/SOURCES.txt
+src/prodog_sast.egg-info/dependency_links.txt
+src/prodog_sast.egg-info/entry_points.txt
+src/prodog_sast.egg-info/requires.txt
+src/prodog_sast.egg-info/top_level.txt
+tests/test_detector.py

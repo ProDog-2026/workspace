@@ -1,0 +1,2 @@
+[console_scripts]
+prodog-sast = prodog_sast.cli:main
