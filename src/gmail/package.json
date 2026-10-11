@@ -1,0 +1,12 @@
+{
+  "name": "prodog-gmail-frontend-checks",
+  "version": "0.1.0",
+  "private": true,
+  "description": "DOM integration checks for the local Gmail connector; no production JS dependencies",
+  "scripts": {
+    "test": "node --test tests/frontend.test.cjs"
+  },
+  "devDependencies": {
+    "jsdom": "^29.1.1"
+  }
+}
