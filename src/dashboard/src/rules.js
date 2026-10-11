@@ -6,17 +6,17 @@ export const TYPES = {
   html_comment: 'HTML 주석',
   zero_width: '제로폭 문자',
   override: '지시 무시 문구',
-  exfil_link: '외부 전송 링크/이미지',
+  exfil_link: '외부 전송 링크 (이미지 포함)',
   encoded: '인코딩 은닉 (Base64 등)',
 }
 
 export const DEFAULT_RULES = [
-  { id: 'R01', type: 'hidden_color', name: 'color:#fff / white 글자 (배경 지정 없음)', weight: 35, on: true },
-  { id: 'R02', type: 'hidden_css', name: 'display:none / font-size:0 / opacity:0', weight: 35, on: true },
+  { id: 'R01', type: 'hidden_color', name: 'color:#fff 또는 white 글자 (배경 지정 없음)', weight: 35, on: true },
+  { id: 'R02', type: 'hidden_css', name: 'display:none, font-size:0, opacity:0', weight: 35, on: true },
   { id: 'R03', type: 'html_comment', name: 'HTML 주석 안 명령형 문장', weight: 30, on: true },
   { id: 'R04', type: 'zero_width', name: '제로폭 문자 5개 이상', weight: 25, on: true },
   { id: 'R05', type: 'override', name: '"ignore previous instructions" 계열 문구', weight: 45, on: true },
-  { id: 'R06', type: 'exfil_link', name: '마크다운 이미지 / 템플릿 쿼리 URL', weight: 40, on: true },
+  { id: 'R06', type: 'exfil_link', name: '마크다운 이미지, 템플릿 쿼리 URL', weight: 40, on: true },
   { id: 'R07', type: 'encoded', name: 'Base64 디코딩 결과에 명령문', weight: 35, on: true },
 ]
 
