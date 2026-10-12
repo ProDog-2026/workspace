@@ -22,6 +22,8 @@
 **/dist/
 **/build/
 
+**/*.egg-info/
+
 # Local model weights
 **/models/
 
