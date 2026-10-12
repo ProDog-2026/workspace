@@ -46,16 +46,18 @@ train/validation/test 사이 그룹 중복은 0건이다. validation 정상 오�
 
 ## 모델 입력과 특징
 
-- 입력: 제목, 발신자, Reply-To, plain 본문, HTML 원문, HTML에서 추출한 텍스트
+- 공통 입력: 제목, 발신자, plain 본문, HTML 원문, HTML에서 추출한 텍스트
+- `.eml` 직접 검사는 수신자와 Reply-To 헤더도 입력에 포함한다.
 - 단어 특징: 1~2-gram TF-IDF, 최대 120,000개
 - 문자 특징: 3~5-gram TF-IDF, 최대 160,000개
 - 분류기: class-weighted `SGDClassifier(loss="log_loss")`
 - 학습 라이브러리: scikit-learn 1.6.0
 - 출력: 인젝션 확률, 임계값, `suspicious` 또는 `benign`
 
-Gmail 수집 API의 `subject`, `sender`, `text_plain`, `text_html`을 메모리에서 변환한다. 실제 메일
-원문과 변환 결과는 저장하지 않는다. `warnings`가 있거나 `truncated`가 참이면 모델 판정과 별도로
-“수집 불완전”을 유지한다.
+Gmail 수집 API의 `subject`, `sender`, `text_plain`, `text_html`을 메모리에서 변환한다. 수집 계약에
+`reply_to`가 없으므로 Gmail 연동에서는 Reply-To를 사용하지 않고, `.eml` 직접 검사에서만 분석한다.
+실제 메일 원문과 변환 결과는 저장하지 않는다. `warnings`가 있거나 `truncated`가 참이면 모델
+판정과 별도로 “수집 불완전”을 유지한다.
 
 ## 포함된 공격 유형
 
