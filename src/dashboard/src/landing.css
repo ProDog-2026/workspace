@@ -1,0 +1,19 @@
+@layer theme, base, utilities; /* 레이어 순서 고정: CSS 로드 순서와 상관없이 Tailwind 유틸리티가 base 보다 이김 */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@400;500;600&display=swap');
+/* preflight(초기화)는 빼고 가져옴: 넣으면 기존 콘솔 화면 스타일까지 바뀜 */
+@import 'tailwindcss/theme.css' layer(theme);
+@import 'tailwindcss/utilities.css' layer(utilities);
+@source './Landing.tsx';
+
+@theme {
+  --font-sans: 'Inter', 'Pretendard Variable', Pretendard, ui-sans-serif, system-ui, sans-serif;
+  --font-display: 'Outfit', 'Pretendard Variable', Pretendard, ui-sans-serif, system-ui, sans-serif;
+}
+
+@keyframes marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+.marquee-track { animation: marquee 30s linear infinite; }
+.marquee:hover .marquee-track { animation-play-state: paused; }
+@media (prefers-reduced-motion: reduce) { .marquee-track { animation: none; } }
