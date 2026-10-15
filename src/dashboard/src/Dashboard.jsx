@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { scans } from './mock'
+import { useEffect, useState } from 'react'
+import { gmail, toRow } from './api'
 import { TYPES } from './rules'
 import { Mark, STATES, bySeverity, stateOf } from './ui'
 import { MailDrawer, MailTable, shortType } from './Verdict'
@@ -14,30 +14,66 @@ const between = (rows, from, to) => rows.filter((r) => { const t = new Date(r.re
 const countOf = (rows, ...states) => rows.filter((r) => states.includes(stateOf(r))).length
 
 // 판정 현황 줄 = 목록 필터 (스마트스토어센터 주문 현황처럼 숫자 칸을 누르면 아래 목록이 바뀜)
-const STRIP = ['flagged', 'danger', 'suspicious', 'incomplete', 'failed', 'all']
+const STRIP = ['flagged', 'danger', 'suspicious', 'incomplete', 'failed', 'pending', 'all']
 const FILTERS = {
   flagged: { label: '위험·의심', states: ['danger', 'suspicious'] },
-  ...Object.fromEntries(['danger', 'suspicious', 'incomplete', 'failed'].map((s) => [s, { label: STATES[s].label, states: [s] }])),
+  ...Object.fromEntries(['danger', 'suspicious', 'incomplete', 'failed', 'pending'].map((s) => [s, { label: STATES[s].label, states: [s] }])),
   all: { label: '전체', states: Object.keys(STATES) },
 }
-const LIMIT = 50 // ponytail: 위험도 순 50건만, 페이지네이션은 실데이터 붙이고 필요하면
+// ponytail: 받은편지함 최신 20건만. 메일마다 Gmail 본문 조회가 1번씩 나가서 50건이면 Gmail 초당 한도에 걸림.
+// 더 보려면 '더 불러오기'로 next_page_token 을 넘겨 다음 20건을 이어 받음
+const LIMIT = 20
 
 export default function Dashboard() {
-  const [days, setDays] = useState(7)
-  const [filter, setFilter] = useState('flagged')
+  const [days, setDays] = useState(null) // null = 전체 기간
+  const [filter, setFilter] = useState('all')
   const [selected, setSelected] = useState(null)
+  const [scans, setScans] = useState(null)
+  const [error, setError] = useState(null)
+  const [next, setNext] = useState(null) // Gmail 다음 페이지 토큰. 없으면 끝
+  const [more, setMore] = useState({ busy: false, error: '' })
 
-  const cur = between(scans, dayStart(days - 1), dayStart(-1))
+  const load = (token) => gmail(`/api/mails?limit=${LIMIT}` + (token ? `&page_token=${encodeURIComponent(token)}` : ''))
+    .then((d) => {
+      setScans((prev) => [...(prev ?? []), ...d.messages.map(toRow)])
+      setNext(d.next_page_token)
+    })
+  useEffect(() => { load().catch(setError) }, [])
+  const loadMore = () => {
+    setMore({ busy: true, error: '' })
+    load(next).then(() => setMore({ busy: false, error: '' }), (e) => setMore({ busy: false, error: e.message }))
+  }
+
+  if (error || !scans) {
+    return (
+      <>
+        <header className="page-head"><h1>대시보드</h1></header>
+        <section className="panel"><p className="empty">
+          {!error ? '받은편지함을 불러오는 중…'
+            : error.code === 'authentication_required'
+              ? <>연결된 Gmail이 없어요. <a href="#/settings">설정</a>에서 Gmail을 연결하세요.</>
+              : error.message}
+        </p></section>
+      </>
+    )
+  }
+
+  // days = null 이면 전체 기간 = 지금까지 불러온 메일 전부 (더 오래된 메일은 '더 불러오기'로 이어 받음)
+  const cur = days ? between(scans, dayStart(days - 1), dayStart(-1)) : scans
+  const period = days ? `최근 ${days}일` : '전체 기간'
+  // 그래프 칸 수: 전체면 가장 오래된 메일 날짜부터 오늘까지. ponytail: 막대가 너무 가늘어지지 않게 최대 90일
+  const oldest = Math.min(...scans.filter((r) => r.received_at).map((r) => new Date(r.received_at)))
+  const span = days ?? Math.min(90, Math.max(7, Math.ceil((dayStart(-1) - oldest) / 86400000)))
   const matched = cur.filter((r) => FILTERS[filter].states.includes(stateOf(r))).sort(bySeverity)
   const typeCounts = Object.keys(TYPES)
     .map((key) => ({ key, label: shortType(key), n: cur.filter((r) => r.types.includes(key)).length }))
     .filter((d) => d.n > 0)
     .sort((a, b) => b.n - a.n)
     .slice(0, 5)
-  const daily = Array.from({ length: days }, (_, i) => {
-    const from = dayStart(days - 1 - i)
-    const rows = between(cur, from, dayStart(days - 2 - i))
-    const last = i === days - 1
+  const daily = Array.from({ length: span }, (_, i) => {
+    const from = dayStart(span - 1 - i)
+    const rows = between(cur, from, dayStart(span - 2 - i))
+    const last = i === span - 1
     return {
       key: from.toISOString(),
       label: last ? '오늘' : `${from.getMonth() + 1}월 ${from.getDate()}일`,
@@ -55,8 +91,8 @@ export default function Dashboard() {
         <div className="ctl-row">
           <span id="period-label">조회 기간</span>
           <div className="btn-group" role="group" aria-labelledby="period-label">
-            {[7, 30].map((d) => (
-              <button key={d} type="button" aria-pressed={days === d} onClick={() => setDays(d)}>최근 {d}일</button>
+            {[7, 30, null].map((d) => (
+              <button key={d ?? 'all'} type="button" aria-pressed={days === d} onClick={() => setDays(d)}>{d ? `최근 ${d}일` : '전체'}</button>
             ))}
           </div>
         </div>
@@ -90,7 +126,7 @@ export default function Dashboard() {
           <div className="panel-body">
             {typeCounts.length
               ? <TypeBars data={typeCounts} />
-              : <p className="muted">최근 {days}일 동안 찾은 숨김 수법이 없어요.</p>}
+              : <p className="muted">{period} 동안 찾은 숨김 수법이 없어요.</p>}
             <p className="note hb-note">메일 1건에 수법이 여러 개일 수 있어요.</p>
           </div>
         </div>
@@ -99,13 +135,21 @@ export default function Dashboard() {
       <section className="panel">
         <div className="panel-head">
           <h2>{FILTERS[filter].label} 메일<span className="count">총 <b>{matched.length}</b>건</span></h2>
-          {matched.length > LIMIT && <span className="note">위험한 순서로 {LIMIT}건까지 보여요.</span>}
+          <span className="note">받은편지함 최신 {scans.length}건 중</span>
         </div>
         <MailTable
-          rows={matched.slice(0, LIMIT)}
+          rows={matched}
           onSelect={setSelected}
-          empty={filter === 'flagged' ? `최근 ${days}일 동안 위험하거나 의심되는 메일이 없어요.` : '해당하는 메일이 없어요.'}
+          empty={filter === 'flagged' ? `${period} 동안 위험하거나 의심되는 메일이 없어요.` : '해당하는 메일이 없어요.'}
         />
+        {next && (
+          <div className="panel-body more">
+            <button type="button" className="btn" disabled={more.busy} onClick={loadMore}>
+              {more.busy ? '불러오는 중…' : `더 불러오기 (${LIMIT}건)`}
+            </button>
+            {more.error && <p className="note" role="alert">{more.error}</p>}
+          </div>
+        )}
       </section>
 
       {selected && <MailDrawer r={selected} onClose={() => setSelected(null)} />}
@@ -117,7 +161,7 @@ export default function Dashboard() {
 function DailyChart({ data }) {
   const max = Math.max(4, ...data.map((d) => d.danger + d.suspicious))
   const top = Math.ceil(max / 4) * 4
-  const every = data.length > 7 ? 5 : 1
+  const every = data.length > 7 ? Math.ceil(data.length / 7) : 1
   return (
     <div className="dchart">
       <div className="dchart-y" aria-hidden="true">{[top, top / 2, 0].map((t) => <span key={t}>{t}</span>)}</div>

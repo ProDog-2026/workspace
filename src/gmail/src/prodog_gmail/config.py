@@ -16,6 +16,8 @@ class Settings(BaseSettings):
 
     app_mode: str = "demo"
     app_base_url: str = "http://127.0.0.1:8765"
+    # Where OAuth callbacks return. Empty keeps this module's own page (/).
+    dashboard_url: str = ""
     google_client_id: str = ""
     google_client_secret: SecretStr = SecretStr("")
     token_encryption_key: SecretStr
@@ -26,18 +28,24 @@ class Settings(BaseSettings):
     def validate_config(self):
         if self.app_mode not in {"demo", "google"}:
             raise ValueError("APP_MODE must be demo or google")
-        url = urlsplit(self.app_base_url)
-        if (
-            url.scheme != "http"
-            or url.hostname not in {"127.0.0.1", "localhost"}
-            or url.username
-            or url.password
-            or url.path not in {"", "/"}
-            or url.query
-            or url.fragment
-        ):
-            raise ValueError("This local prototype requires a loopback http APP_BASE_URL")
-        self.app_base_url = self.app_base_url.rstrip("/")
+        for name in ("app_base_url", "dashboard_url"):
+            value = getattr(self, name)
+            if name == "dashboard_url" and not value:
+                continue
+            url = urlsplit(value)
+            if (
+                url.scheme != "http"
+                or url.hostname not in {"127.0.0.1", "localhost"}
+                or url.username
+                or url.password
+                or url.path not in {"", "/"}
+                or url.query
+                or url.fragment
+            ):
+                raise ValueError(
+                    f"This local prototype requires a loopback http {name.upper()}"
+                )
+            setattr(self, name, value.rstrip("/"))
         try:
             Fernet(self.token_encryption_key.get_secret_value().encode("ascii"))
         except (ValueError, UnicodeError) as exc:

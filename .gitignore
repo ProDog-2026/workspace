@@ -22,8 +22,14 @@
 **/dist/
 **/build/
 
+**/*.egg-info/
+
 # Local model weights
 **/models/
+
+# Regenerable external detector datasets
+src/detector/data/vendor/
+src/detector/data/processed/
 
 # OS and editor
 .DS_Store

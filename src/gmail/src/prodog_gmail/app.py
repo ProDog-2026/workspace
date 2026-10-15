@@ -240,12 +240,12 @@ def create_app(settings: Settings | None = None, transport=None) -> FastAPI:
                 oauth_response,
                 application.state.google.token_bundle,
             )
-            response = RedirectResponse("/?connected=1", status_code=303)
+            response = RedirectResponse(config.dashboard_url + "/?connected=1", status_code=303)
             set_cookie(response, new)
             return response
         except ConnectorError as exc:
             # Fixed codes only; authorization code, state, and upstream errors never enter URLs.
-            return RedirectResponse("/?error=" + exc.code, status_code=303)
+            return RedirectResponse(config.dashboard_url + "/?error=" + exc.code, status_code=303)
 
     async def get_mail(current: dict, message_id: str):
         if not MESSAGE_ID.fullmatch(message_id):
@@ -292,7 +292,8 @@ def create_app(settings: Settings | None = None, transport=None) -> FastAPI:
                 try:
                     return mail_metadata(await get_mail(current, message_id))
                 except ConnectorError as exc:
-                    if exc.code not in {"mail_not_found", "message_too_large"}:
+                    # One throttled message should not hide the rest of the inbox.
+                    if exc.code not in {"mail_not_found", "message_too_large", "rate_limited"}:
                         raise
                     return {
                         "id": message_id,

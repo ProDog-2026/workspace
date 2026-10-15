@@ -395,3 +395,46 @@ def test_config_refuses_public_or_ambiguous_origin(tmp_path, url):
             token_encryption_key=Fernet.generate_key().decode(),
             database_path=tmp_path / "db",
         )
+
+
+def test_callback_returns_to_configured_dashboard(google_client, settings):
+    client, _ = google_client
+    settings.dashboard_url = "http://127.0.0.1:5173"
+    response = callback(client, oauth_start(client)["state"][0])
+    assert response.headers["location"] == "http://127.0.0.1:5173/?connected=1"
+    assert callback(client, "stale").headers["location"] == (
+        "http://127.0.0.1:5173/?error=invalid_state"
+    )
+
+
+def test_config_refuses_public_dashboard_url(tmp_path):
+    with pytest.raises(ValueError):
+        Settings(
+            _env_file=None,
+            dashboard_url="https://evil.example",
+            token_encryption_key=Fernet.generate_key().decode(),
+            database_path=tmp_path / "db",
+        )
+
+
+def test_list_keeps_other_mails_when_one_is_throttled(google_client, monkeypatch):
+    client, _ = google_client
+
+    async def no_sleep(_):
+        return None
+
+    monkeypatch.setattr("prodog_gmail.google.asyncio.sleep", no_sleep)
+    original = FakeGoogle.__call__
+
+    def throttled(self, request):
+        if request.url.path.endswith("/messages/demo-2"):
+            return httpx.Response(
+                403, json={"error": {"errors": [{"reason": "userRateLimitExceeded"}]}}
+            )
+        return original(self, request)
+
+    monkeypatch.setattr(FakeGoogle, "__call__", throttled)
+    callback(client, oauth_start(client)["state"][0])
+    messages = client.get("/api/mails").json()["messages"]
+    assert [m["warnings"] for m in messages if m["id"] == "demo-2"] == [["rate_limited"]]
+    assert sum(m["body_hash"] is not None for m in messages) == 2
