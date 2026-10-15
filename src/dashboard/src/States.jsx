@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { EXAMPLES } from './mock'
+import { EXAMPLES } from './examples'
 import { Badge, STATES } from './ui'
 import { ADVICE, MailDrawer, MailTable, NO_EVIDENCE, SUMMARY } from './Verdict'
 

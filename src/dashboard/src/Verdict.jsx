@@ -19,6 +19,7 @@ export const SUMMARY = {
   safe: '검사한 범위에선 숨은 명령을 찾지 못했어요.',
   incomplete: '메일 일부를 못 가져와서 다 검사하지 못했어요.',
   failed: '오류가 나서 판정하지 못했어요.',
+  pending: '메일은 가져왔고 아직 검사하지 않았어요.',
 }
 
 // 읽기 전용 앱: 사용자가 직접 할 일만 안내하고, 격리·차단 같은 기능은 약속하지 않음
@@ -28,6 +29,7 @@ export const ADVICE = {
   safe: [],
   incomplete: ['검사 못 한 부분은 안전한지 알 수 없음', '특히 첨부파일은 AI에게 맡기지 않기'],
   failed: ['판정이 나올 때까지 AI에게 맡기지 않기'],
+  pending: ['판정이 나올 때까지 AI에게 맡기지 않기'],
 }
 
 // 근거가 없을 때 문구. 상세의 '찾은 부분' 칸과 판정 안내 표가 같이 씀 (상태별 뜻 유지)
@@ -37,6 +39,7 @@ export const NO_EVIDENCE = {
   safe: '숨긴 글자, HTML 주석, 지시 문구, 외부 전송 링크를 찾지 못했어요. 모든 수법을 잡는다고 장담할 수는 없어요.',
   incomplete: '가져온 부분에선 숨은 명령을 찾지 못했어요. 빠진 부분은 검사하지 않았어요.',
   failed: '분석이 끝나지 않아 근거가 없어요. 안전하다는 뜻은 아니에요.',
+  pending: '탐지기와 아직 연결되지 않아 검사 결과가 없어요. 안전하다는 뜻은 아니에요.',
 }
 
 export const typeName = (k) => TYPES[k] ?? k
@@ -46,6 +49,7 @@ export const shortType = (k) => typeName(k).replace(/\s*\(.*\)$/, '')
 export function shortReason(r) {
   const state = stateOf(r)
   if (state === 'failed') return r.status_detail ?? '판정 결과 없음'
+  if (state === 'pending') return r.status === 'incomplete' ? '검사 전 · 일부 못 가져옴' : '검사 전'
   if (r.evidence.length) return shortType(r.evidence[0].type) + (r.evidence.length > 1 ? ` 외 ${r.evidence.length - 1}곳` : '')
   if (state === 'incomplete') return `${r.missing_parts[0]} 못 가져옴`
   if (state === 'safe') return '숨은 명령 없음'
@@ -64,7 +68,7 @@ export function MailTable({ rows, onSelect, empty = '해당하는 메일이 없�
         <tbody>
           {rows.map((r) => {
             const s = stateOf(r)
-            const partial = r.status !== 'ok' && s !== r.status
+            const partial = r.status !== 'ok' && (s === 'danger' || s === 'suspicious')
             return (
               <tr key={r.id} onClick={() => onSelect(r)}>
                 <td className="td-state"><Badge v={s} /></td>
@@ -72,7 +76,7 @@ export function MailTable({ rows, onSelect, empty = '해당하는 메일이 없�
                 <td className="td-subj"><button type="button" className="subj">{r.subject}</button></td>
                 <td className="sender">{r.sender}</td>
                 <td className="reason">{shortReason(r)}{partial && <span className="tag">일부만 검사</span>}</td>
-                <td className="time">{fmtShort(r.received_at)}</td>
+                <td className="time">{r.received_at ? fmtShort(r.received_at) : '-'}</td>
               </tr>
             )
           })}
@@ -106,7 +110,7 @@ function Score({ r, t }) {
           </div>
         </div>
       )}
-      {r.status === 'incomplete' && <p className="sub">가져온 부분만 검사한 점수예요.</p>}
+      {r.status === 'incomplete' && !r.pending && <p className="sub">가져온 부분만 검사한 점수예요.</p>}
     </>
   )
 }
@@ -114,7 +118,7 @@ function Score({ r, t }) {
 // 순서: ① 판정 띠(상태색은 여기와 라벨에만) → ② 정보 표 → ③ 할 일 → ④ 찾은 부분
 export function VerdictDetail({ r, thresholds = DEFAULT_THRESHOLDS }) {
   const state = stateOf(r)
-  const partial = r.status !== 'ok' && state !== r.status
+  const partial = r.status !== 'ok' && (state === 'danger' || state === 'suspicious')
   const advice = partial && r.status === 'incomplete' ? [...ADVICE[state], ADVICE.incomplete[1]] : ADVICE[state]
   const n = r.evidence.length
 
@@ -131,7 +135,7 @@ export function VerdictDetail({ r, thresholds = DEFAULT_THRESHOLDS }) {
           {r.sender && <tr><th scope="row">보낸 사람</th><td className="mono">{r.sender}</td></tr>}
           {r.received_at && <tr><th scope="row">받은 시각</th><td>{fmtTime(r.received_at)}</td></tr>}
           {r.llm_reason && <tr><th scope="row">문맥 분석</th><td>{r.llm_reason}</td></tr>}
-          {r.status === 'incomplete' && (
+          {r.status === 'incomplete' && r.missing_parts.length > 0 && (
             <tr><th scope="row">검사 못 한 부분</th><td>
               <ul className="plain">{r.missing_parts.map((p) => <li key={p}>{p}</li>)}</ul>
               {partial && <p className="sub">검사한 부분에서 이미 {STATES[state].label} 근거가 나왔어요.</p>}
