@@ -19,16 +19,17 @@
 @media (prefers-reduced-motion: reduce) { .marquee-track { animation: none; } }
 
 /* 배경 메일 타일 장면 */
-.scene { position: absolute; inset: 0; overflow: hidden; background: radial-gradient(120% 90% at 68% 58%, #ffffff 0%, #f2f5f9 58%, #e7ecf3 100%); }
-.scene-plane { position: absolute; left: 68%; top: 60%; display: grid; grid-template-columns: repeat(7, 124px); gap: 18px; transform: translate(-50%, -50%) perspective(1800px) rotateX(56deg) rotateZ(-40deg); transform-style: preserve-3d; }
-.tile { position: relative; display: grid; place-items: center; width: 124px; height: 124px; border-radius: 28px; color: #c5cdd9; background: linear-gradient(145deg, rgba(255, 255, 255, 0.98), rgba(234, 239, 246, 0.75)); border: 1px solid rgba(255, 255, 255, 0.95); box-shadow: 0 10px 0 rgba(203, 213, 225, 0.6), 0 30px 40px -12px rgba(15, 23, 42, 0.12), inset 0 1px 0 #fff; transform-style: preserve-3d; animation: tile-float 7s ease-in-out infinite; animation-delay: var(--d, 0s); }
-.tile svg { width: 54px; height: 54px; }
+.scene { position: absolute; inset: 0; overflow: hidden; container-type: size; background: radial-gradient(120% 90% at 68% 58%, #ffffff 0%, #f2f5f9 58%, #e7ecf3 100%); }
+/* 기준 구도: 히어로 상자 1216×600 (1280px 화면). --u 하나로 타일 크기·간격·깊이를 같이 키우고 줄여서 어떤 화면에서도 같은 비율 */
+.scene-plane { --u: min(calc(100cqw / 1216), calc(100cqh / 600)); position: absolute; left: 68%; top: 60%; display: grid; grid-template-columns: repeat(7, calc(124 * var(--u))); gap: calc(18 * var(--u)); transform: translate(-50%, -50%) perspective(calc(1800 * var(--u))) rotateX(56deg) rotateZ(-40deg); transform-style: preserve-3d; }
+.tile { position: relative; display: grid; place-items: center; width: calc(124 * var(--u)); height: calc(124 * var(--u)); border-radius: calc(28 * var(--u)); color: #c5cdd9; background: linear-gradient(145deg, rgba(255, 255, 255, 0.98), rgba(234, 239, 246, 0.75)); border: 1px solid rgba(255, 255, 255, 0.95); box-shadow: 0 calc(10 * var(--u)) 0 rgba(203, 213, 225, 0.6), 0 calc(30 * var(--u)) calc(40 * var(--u)) calc(-12 * var(--u)) rgba(15, 23, 42, 0.12), inset 0 1px 0 #fff; transform-style: preserve-3d; animation: tile-float 7s ease-in-out infinite; animation-delay: var(--d, 0s); }
+.tile svg { width: calc(54 * var(--u)); height: calc(54 * var(--u)); }
 .tile.near { color: #e8a3a6; background: linear-gradient(145deg, #fff, #fbeeee); }
-.tile.hot { color: #fff; background: linear-gradient(145deg, #ff7377, #e5484d 55%, #c8282f); border-color: rgba(255, 210, 210, 0.9); transform: translateZ(30px); animation: hot-pulse 2.6s ease-in-out infinite; }
-.tile.hot svg { width: 60px; height: 60px; }
+.tile.hot { color: #fff; background: linear-gradient(145deg, #ff7377, #e5484d 55%, #c8282f); border-color: rgba(255, 210, 210, 0.9); transform: translateZ(calc(30 * var(--u))); animation: hot-pulse 2.6s ease-in-out infinite; }
+.tile.hot svg { width: calc(60 * var(--u)); height: calc(60 * var(--u)); }
 button.tile { padding: 0; font: inherit; }
 .tile.hot { pointer-events: auto; cursor: pointer; transition: transform 0.35s cubic-bezier(0.22, 1, 0.36, 1); }
-.tile.hot:hover, .tile.hot:focus-visible { transform: translateZ(48px); }
+.tile.hot:hover, .tile.hot:focus-visible { transform: translateZ(calc(48 * var(--u))); }
 .tile.hot:focus-visible { outline: 3px solid #0a152d; outline-offset: 6px; }
 /* 봉투 열림 전환 */
 .env-overlay { position: fixed; inset: 0; z-index: 100; pointer-events: none; }
@@ -44,14 +45,14 @@ button.tile { padding: 0; font: inherit; }
 .env-reveal { position: absolute; inset: 0; background: #f9fafb; clip-path: circle(0% at 50% 38%); }
 .scene-scan { position: absolute; top: -40px; bottom: -40px; left: -30%; width: 28%; background: linear-gradient(90deg, transparent, rgba(229, 72, 77, 0.12), transparent); pointer-events: none; animation: scene-scan 6s linear infinite; }
 .scene-fade { position: absolute; inset: 0; background: linear-gradient(90deg, #fff 0%, rgba(255, 255, 255, 0.86) 30%, rgba(255, 255, 255, 0) 58%), linear-gradient(0deg, rgba(255, 255, 255, 0.7) 0%, rgba(255, 255, 255, 0) 30%); }
-@keyframes tile-float { 0%, 100% { transform: translateZ(0); } 50% { transform: translateZ(10px); } }
+@keyframes tile-float { 0%, 100% { transform: translateZ(0); } 50% { transform: translateZ(calc(10 * var(--u))); } }
 @keyframes hot-pulse {
   0%, 100% { box-shadow: 0 14px 0 #a51e24, 0 0 50px 8px rgba(229, 72, 77, 0.35), inset 0 2px 0 rgba(255, 255, 255, 0.45); }
   50% { box-shadow: 0 14px 0 #a51e24, 0 0 110px 26px rgba(229, 72, 77, 0.5), inset 0 2px 0 rgba(255, 255, 255, 0.45); }
 }
 @keyframes scene-scan { from { left: -30%; } to { left: 110%; } }
 @media (max-width: 767px) {
-  .scene-plane { left: 55%; top: 78%; transform: translate(-50%, -50%) perspective(1800px) rotateX(56deg) rotateZ(-40deg) scale(0.62); }
+  .scene-plane { --u: calc(100cqw / 560); left: 55%; top: 78%; }
   .scene-fade { background: linear-gradient(180deg, #fff 0%, rgba(255, 255, 255, 0.85) 40%, rgba(255, 255, 255, 0) 65%); }
 }
 @media (prefers-reduced-motion: reduce) { .tile, .tile.hot, .scene-scan { animation: none; } }
