@@ -25,7 +25,7 @@ export default function Login() {
   return (
     <main className="login">
       <div className="login-wrap">
-        <span className="login-logo"><Logo size={28} />ProDog</span>
+        <a className="login-logo" href="#/intro"><Logo size={28} />ProDog</a>
         <div className="login-box">
           <h1>로그인</h1>
           <p className="login-sub">Google 계정으로 로그인하면 Gmail 받은편지함을 검사해요.</p>

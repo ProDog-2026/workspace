@@ -34,6 +34,19 @@ export default function Dashboard() {
     .filter((d) => d.n > 0)
     .sort((a, b) => b.n - a.n)
     .slice(0, 5)
+  const daily = Array.from({ length: days }, (_, i) => {
+    const from = dayStart(days - 1 - i)
+    const rows = between(cur, from, dayStart(days - 2 - i))
+    const last = i === days - 1
+    return {
+      key: from.toISOString(),
+      label: last ? '오늘' : `${from.getMonth() + 1}월 ${from.getDate()}일`,
+      short: last ? '오늘' : `${from.getMonth() + 1}/${from.getDate()}`,
+      danger: countOf(rows, 'danger'),
+      suspicious: countOf(rows, 'suspicious'),
+    }
+  })
+  const flaggedTotal = countOf(cur, 'danger', 'suspicious')
 
   return (
     <>
@@ -62,6 +75,27 @@ export default function Dashboard() {
         })}
       </section>
 
+      <section className="chart-row">
+        <div className="panel">
+          <div className="panel-head">
+            <h2>일별 탐지<span className="count">위험·의심 <b>{flaggedTotal}</b>건</span></h2>
+            <div className="legend" aria-hidden="true"><span><i className="danger" />위험</span><span><i className="suspicious" />의심</span></div>
+          </div>
+          <div className="panel-body"><DailyChart data={daily} /></div>
+        </div>
+        <div className="panel">
+          <div className="panel-head">
+            <h2>자주 쓰인 숨김 수법</h2>
+          </div>
+          <div className="panel-body">
+            {typeCounts.length
+              ? <TypeBars data={typeCounts} />
+              : <p className="muted">최근 {days}일 동안 찾은 숨김 수법이 없어요.</p>}
+            <p className="note hb-note">메일 1건에 수법이 여러 개일 수 있어요.</p>
+          </div>
+        </div>
+      </section>
+
       <section className="panel">
         <div className="panel-head">
           <h2>{FILTERS[filter].label} 메일<span className="count">총 <b>{matched.length}</b>건</span></h2>
@@ -74,20 +108,36 @@ export default function Dashboard() {
         />
       </section>
 
-      <section className="panel">
-        <div className="panel-head">
-          <h2>자주 쓰인 숨김 수법</h2>
-          <span className="note">메일 1건에 수법이 여러 개일 수 있어요.</span>
-        </div>
-        <div className="panel-body">
-          {typeCounts.length
-            ? <TypeBars data={typeCounts} />
-            : <p className="muted">최근 {days}일 동안 찾은 숨김 수법이 없어요.</p>}
-        </div>
-      </section>
-
       {selected && <MailDrawer r={selected} onClose={() => setSelected(null)} />}
     </>
+  )
+}
+
+// 일별 위험·의심 누적 막대. 위쪽 칸이 위험, 마우스·키보드 포커스로 그날 숫자를 보여 줌
+function DailyChart({ data }) {
+  const max = Math.max(4, ...data.map((d) => d.danger + d.suspicious))
+  const top = Math.ceil(max / 4) * 4
+  const every = data.length > 7 ? 5 : 1
+  return (
+    <div className="dchart">
+      <div className="dchart-y" aria-hidden="true">{[top, top / 2, 0].map((t) => <span key={t}>{t}</span>)}</div>
+      <div className={`dchart-plot${data.length > 7 ? ' dense' : ''}`}>
+        {data.map((d, i) => {
+          const n = d.danger + d.suspicious
+          const showX = i % every === 0 || i === data.length - 1
+          return (
+            <div key={d.key} className="dcol" tabIndex={0} aria-label={`${d.label} 위험 ${d.danger}건, 의심 ${d.suspicious}건`}>
+              <div className="dbar" style={{ height: `${(n / top) * 100}%` }}>
+                {d.danger > 0 && <i className="danger" style={{ flex: d.danger }} />}
+                {d.suspicious > 0 && <i className="suspicious" style={{ flex: d.suspicious }} />}
+              </div>
+              <span className="dtip" aria-hidden="true"><b>{d.label}</b><span>위험 {d.danger}건</span><span>의심 {d.suspicious}건</span></span>
+              {showX && <span className={`dx${i === data.length - 1 ? ' today' : ''}`} aria-hidden="true">{d.short}</span>}
+            </div>
+          )
+        })}
+      </div>
+    </div>
   )
 }
 
