@@ -1,0 +1,50 @@
+{
+  "threshold": 0.08877245225083939,
+  "max_validation_fpr": 0.02,
+  "split_samples": {
+    "train": 17138,
+    "validation": 3672,
+    "test": 3678
+  },
+  "split_group_counts": {
+    "train": 8551,
+    "validation": 1833,
+    "test": 1833
+  },
+  "group_overlap": {
+    "train_validation": false,
+    "train_test": false,
+    "validation_test": false
+  },
+  "validation": {
+    "samples": 3672,
+    "positives": 1836,
+    "true_positive": 1835,
+    "false_positive": 34,
+    "true_negative": 1802,
+    "false_negative": 1,
+    "precision": 0.9818084537185661,
+    "recall": 0.9994553376906318,
+    "f1": 0.99055330634278,
+    "false_positive_rate": 0.018518518518518517,
+    "roc_auc": 0.9998662076789079
+  },
+  "test": {
+    "samples": 3678,
+    "positives": 1839,
+    "true_positive": 1839,
+    "false_positive": 36,
+    "true_negative": 1803,
+    "false_negative": 0,
+    "precision": 0.9808,
+    "recall": 1.0,
+    "f1": 0.9903069466882067,
+    "false_positive_rate": 0.01957585644371941,
+    "roc_auc": 0.9999961560308476
+  },
+  "row_id_group_fallback": false,
+  "training_sources": [
+    "data\\vendor\\prompt_injections_so_back\\defense_evaluation\\paired_emails_dataset.json",
+    "data\\processed\\llmail-train.jsonl"
+  ]
+}

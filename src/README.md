@@ -1,3 +1,7 @@
 # src
 
-팀 자체 코드를 둔다. 구조(백엔드, 프론트엔드, 탐지 모델 등)는 기술 스택 확정 후 정한다.
+팀 자체 코드를 둔다.
+
+- [`gmail/`](gmail/): Gmail OAuth와 메일 수집
+- [`dashboard/`](dashboard/): 이메일 검증 대시보드 데모
+- [`detector/`](detector/): 메일 프롬프트 인젝션 ML 탐지기
