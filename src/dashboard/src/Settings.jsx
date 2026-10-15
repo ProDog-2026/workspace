@@ -1,13 +1,49 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { gmail } from './api'
 
-// 데모: 저장 안 됨. 실제로는 Supabase 의 사용자 설정 테이블에 저장
+// Gmail 연동만 실제 동작. 나머지 설정은 데모라 저장 안 됨 (실제로는 Supabase 사용자 설정 테이블)
 export default function Settings() {
-  const [connected, setConnected] = useState(true)
+  const [session, setSession] = useState(null)
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  const run = async (job) => {
+    setBusy(true)
+    setError('')
+    try { await job() } catch (e) { setError(e.message) } finally { setBusy(false) }
+  }
+  const refresh = async () => setSession(await gmail('/api/session'))
+  useEffect(() => {
+    const code = new URLSearchParams(location.search).get('error')
+    if (location.search) history.replaceState(null, '', '/' + (location.hash || '#/settings'))
+    run(async () => {
+      await refresh()
+      if (code) throw new Error(`Google 연결에 실패했어요 (${code}). 다시 시도해 주세요.`)
+    })
+  }, [])
+
+  // POST 직전에 세션을 다시 읽어 CSRF 토큰을 받음. 첫 방문 때 상단(App)도 /api/session 을 동시에 불러
+  // 세션 쿠키가 하나 더 생기면, 화면에 들고 있던 토큰은 쿠키와 안 맞아 csrf_failed 가 남
+  const post = async (path) => gmail(path, (await gmail('/api/session')).csrf_token)
+  const connect = () => run(async () => {
+    if (session.mode === 'demo') {
+      await post('/api/demo/connect')
+      return refresh()
+    }
+    const { authorization_url } = await post('/api/oauth/google/start')
+    location.assign(authorization_url)
+  })
+  const disconnect = () => run(async () => {
+    await post('/api/disconnect')
+    await refresh()
+  })
+
+  const connected = session?.authenticated && !session.needs_reconnect
 
   return (
     <>
       <header className="page-head"><h1>설정<span className="tag">데모</span></h1></header>
-      <p className="note page-note">데모 화면이라 바꾼 값은 저장되지 않아요.</p>
+      <p className="note page-note">Gmail 연동 외의 값은 데모라 저장되지 않아요.</p>
 
       <section className="panel settings">
         <table className="form-table">
@@ -15,19 +51,25 @@ export default function Settings() {
             <tr>
               <th scope="row">Gmail 연동</th>
               <td><div className="cell">
-                {connected ? (
+                {!session ? (
+                  <span className="muted">{busy ? '연결 상태 확인 중…' : '연결 상태를 알 수 없어요.'}</span>
+                ) : connected ? (
                   <>
-                    <span>demo@gmail.example</span>
+                    <span>{session.email}</span>
                     <span className="tag ro">읽기 전용</span>
-                    <button type="button" className="btn" onClick={() => setConnected(false)}>연동 해제</button>
+                    <button type="button" className="btn" disabled={busy} onClick={disconnect}>연동 해제</button>
                   </>
                 ) : (
                   <>
-                    <span className="muted">연결된 계정이 없어요.</span>
-                    <button type="button" className="btn primary" onClick={() => setConnected(true)}>Gmail 연결하기</button>
+                    <span className="muted">{session.needs_reconnect ? 'Gmail 권한이 만료됐어요. 다시 연결해 주세요.' : '연결된 계정이 없어요.'}</span>
+                    <button type="button" className="btn primary" disabled={busy || !session.configured} onClick={connect}>
+                      {session.needs_reconnect ? '다시 연결하기' : 'Gmail 연결하기'}
+                    </button>
                   </>
                 )}
-              </div></td>
+              </div>
+              {error && <p className="note" role="alert">{error}</p>}
+              </td>
             </tr>
             <tr>
               <th scope="row">자동 검사</th>
