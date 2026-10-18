@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import csv
 import json
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -11,6 +11,7 @@ from .email_text import fields_to_model_text
 
 LABEL_FIELDS = ("prompt_injection", "label", "is_injection")
 GROUP_FIELDS = ("group_id", "scenario_id", "base_email_id", "team_id", "email_id")
+ROW_GROUP_PREFIX = "row-"
 
 
 @dataclass(frozen=True)
@@ -18,6 +19,8 @@ class Sample:
     text: str
     label: int
     group: str
+    source: str = "unknown"
+    split: str | None = None
 
 
 def _records(path: Path) -> Iterable[dict[str, Any]]:
@@ -92,10 +95,9 @@ def _expand_paired_record(record: dict[str, Any]) -> list[dict[str, Any]]:
     return expanded
 
 
-def load_samples(path: str | Path) -> tuple[list[Sample], bool]:
+def iter_samples(path: str | Path) -> Iterator[Sample]:
+    """Stream samples so a multi-gigabyte corpus never has to be held in memory."""
     path = Path(path)
-    samples: list[Sample] = []
-    used_row_groups = False
     records = (
         expanded
         for record in _records(path)
@@ -105,18 +107,41 @@ def load_samples(path: str | Path) -> tuple[list[Sample], bool]:
         label_value = _first(record, LABEL_FIELDS, None)
         if label_value is None:
             raise ValueError(f"sample {index}: one of {LABEL_FIELDS} is required")
+        source = str(
+            _first(record, ("source_dataset", "dataset", "source"), path.stem)
+        ).strip()
+        if not source:
+            source = path.stem
+        split = str(record.get("split", "")).strip() or None
+        if split not in {None, "train", "validation", "test"}:
+            raise ValueError(f"sample {index}: unsupported split: {split!r}")
         group = str(_first(record, GROUP_FIELDS, "")).strip()
         if not group:
-            group = f"row-{index}"
-            used_row_groups = True
-        text = fields_to_model_text(
-            subject=str(_first(record, ("subject", "title"))),
-            body_text=str(_first(record, ("body_text", "body", "text", "content"))),
-            body_html=str(_first(record, ("body_html", "html"))),
-            sender=str(_first(record, ("from", "sender"))),
-            reply_to=str(_first(record, ("reply_to", "reply-to"))),
+            group = f"{ROW_GROUP_PREFIX}{index}"
+        if "model_text" in record:
+            text = str(record["model_text"])
+        else:
+            text = fields_to_model_text(
+                subject=str(_first(record, ("subject", "title"))),
+                body_text=str(_first(record, ("body_text", "body", "text", "content"))),
+                body_html=str(_first(record, ("body_html", "html"))),
+                sender=str(_first(record, ("from", "sender"))),
+                reply_to=str(_first(record, ("reply_to", "reply-to"))),
+            )
+        yield Sample(
+            text=text,
+            label=_label(label_value),
+            group=group,
+            source=source,
+            split=split,
         )
-        samples.append(Sample(text=text, label=_label(label_value), group=group))
+
+
+def load_samples(path: str | Path) -> tuple[list[Sample], bool]:
+    samples = list(iter_samples(path))
     if not samples:
         raise ValueError(f"{path}: no samples")
+    used_row_groups = any(
+        sample.group.startswith(ROW_GROUP_PREFIX) for sample in samples
+    )
     return samples, used_row_groups
