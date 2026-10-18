@@ -5,26 +5,37 @@ import json
 import sys
 from pathlib import Path
 
-from .data import load_samples
+from .data import iter_samples
 from .email_text import eml_bytes_to_model_text, fields_to_model_text
-from .model import load_artifact, predict, save_artifact, train
+from .model import (
+    DEFAULT_ALPHA,
+    DEFAULT_BATCH_SIZE,
+    DEFAULT_DANGER_FPR,
+    DEFAULT_EPOCHS,
+    load_artifact,
+    predict,
+    save_artifact,
+    train,
+)
 
 
 def _train(args: argparse.Namespace) -> int:
-    samples = []
-    used_row_groups = False
-    for path in args.data:
-        loaded, used_fallback = load_samples(path)
-        samples.extend(loaded)
-        used_row_groups = used_row_groups or used_fallback
+    def stream():
+        for path in args.data:
+            yield from iter_samples(path)
+
     artifact, report = train(
-        samples,
+        stream,
         seed=args.seed,
         max_validation_fpr=args.max_validation_fpr,
-        max_validation_review_rate=args.max_validation_review_rate,
+        max_validation_attack_safe_rate=args.max_validation_attack_safe_rate,
+        max_validation_danger_fpr=args.max_validation_danger_fpr,
+        alpha=args.alpha,
+        epochs=args.epochs,
+        batch_size=args.batch_size,
     )
-    report["row_id_group_fallback"] = used_row_groups
     report["training_sources"] = args.data
+    used_row_groups = bool(report["row_id_group_fallback"])
     artifact["report"] = report
     save_artifact(artifact, args.output)
     rendered = json.dumps(report, ensure_ascii=False, indent=2)
@@ -86,7 +97,15 @@ def build_parser() -> argparse.ArgumentParser:
     train_parser.add_argument("--report", default="reports/metrics.json")
     train_parser.add_argument("--seed", type=int, default=42)
     train_parser.add_argument("--max-validation-fpr", type=float, default=0.02)
-    train_parser.add_argument("--max-validation-review-rate", type=float, default=0.05)
+    train_parser.add_argument(
+        "--max-validation-attack-safe-rate", type=float, default=0.005
+    )
+    train_parser.add_argument(
+        "--max-validation-danger-fpr", type=float, default=DEFAULT_DANGER_FPR
+    )
+    train_parser.add_argument("--alpha", type=float, default=DEFAULT_ALPHA)
+    train_parser.add_argument("--epochs", type=int, default=DEFAULT_EPOCHS)
+    train_parser.add_argument("--batch-size", type=int, default=DEFAULT_BATCH_SIZE)
     train_parser.set_defaults(handler=_train)
 
     scan_parser = subparsers.add_parser("scan", help="scan .eml or UTF-8 text files")

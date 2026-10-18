@@ -1,77 +1,358 @@
 {
-  "threshold": 0.08877245225083939,
-  "suspicious_threshold": 0.0400186634741522,
-  "danger_threshold": 0.08877245225083939,
+  "threshold": 0.4144192039966583,
+  "suspicious_threshold": 0.33899644017219543,
+  "danger_threshold": 0.4144192039966583,
+  "suspicious_band_collapsed": false,
   "max_validation_fpr": 0.02,
-  "max_validation_review_rate": 0.05,
+  "max_validation_attack_safe_rate": 0.005,
+  "max_validation_danger_fpr": 0.002,
+  "threshold_policy": {
+    "suspicious": "highest score keeping validation attacks below the safe gate at or under 0.500%",
+    "danger": "lowest score whose validation benign false-positive rate stays at or under 0.200%, maximising attack recall",
+    "review_budget": "validation benign review rate is compared against max_validation_fpr (2.000%) and reported, not enforced"
+  },
+  "features": "hashing word(1,2) + char_wb(3,5), 2^20 buckets each, binary + l2",
+  "classifier": "SGDClassifier(log_loss, alpha=1e-05, average) via partial_fit",
+  "epochs": 3,
+  "batch_size": 2048,
+  "row_id_group_fallback": false,
   "split_samples": {
-    "train": 17138,
-    "validation": 3672,
-    "development_holdout": 3678
+    "train": 241594,
+    "validation": 114322,
+    "test": 65896
   },
   "split_group_counts": {
-    "train": 8551,
-    "validation": 1833,
-    "development_holdout": 1833
+    "train": 98351,
+    "validation": 24587,
+    "test": 24589
+  },
+  "source_split_samples": {
+    "bipia-emailqa": {
+      "train": 326,
+      "validation": 81,
+      "test": 81
+    },
+    "cw-l-email-corpus": {
+      "train": 877,
+      "validation": 219,
+      "test": 220
+    },
+    "llmail-inject": {
+      "train": 96959,
+      "validation": 75917,
+      "test": 30434
+    },
+    "paired-email": {
+      "train": 5600,
+      "validation": 1400,
+      "test": 1400
+    },
+    "phishing-curated": {
+      "train": 137832,
+      "validation": 36705,
+      "test": 33761
+    }
+  },
+  "source_split_group_counts": {
+    "bipia-emailqa": {
+      "train": 326,
+      "validation": 81,
+      "test": 81
+    },
+    "cw-l-email-corpus": {
+      "train": 877,
+      "validation": 219,
+      "test": 220
+    },
+    "llmail-inject": {
+      "train": 309,
+      "validation": 77,
+      "test": 78
+    },
+    "paired-email": {
+      "train": 2800,
+      "validation": 700,
+      "test": 700
+    },
+    "phishing-curated": {
+      "train": 94039,
+      "validation": 23510,
+      "test": 23510
+    }
+  },
+  "training_weight": {
+    "by_source_label": {
+      "bipia-emailqa:0": 32.0,
+      "bipia-emailqa:1": 18.28362781204915,
+      "cw-l-email-corpus:0": 8.69302480742092,
+      "llmail-inject:0": 24.88735981860115,
+      "llmail-inject:1": 1.0175803284492033,
+      "paired-email:0": 4.865099199738744,
+      "paired-email:1": 5.98472203050822,
+      "phishing-curated:0": 0.6934189190723326
+    }
   },
   "group_overlap": {
     "train_validation": false,
-    "train_development_holdout": false,
-    "validation_development_holdout": false
+    "train_test": false,
+    "validation_test": false
   },
   "validation": {
-    "samples": 3672,
-    "positives": 1836,
-    "true_positive": 1835,
-    "false_positive": 34,
-    "true_negative": 1802,
-    "false_negative": 1,
-    "precision": 0.9818084537185661,
-    "recall": 0.9994553376906318,
-    "f1": 0.99055330634278,
-    "false_positive_rate": 0.018518518518518517,
-    "roc_auc": 0.9998662076789079
+    "samples": 114322,
+    "positives": 76666,
+    "true_positive": 76053,
+    "false_positive": 75,
+    "true_negative": 37581,
+    "false_negative": 613,
+    "precision": 0.999014817150063,
+    "recall": 0.9920042782980721,
+    "f1": 0.9954972053876461,
+    "false_positive_rate": 0.0019917144678138943,
+    "roc_auc": 0.9997008020509237
   },
-  "development_holdout": {
-    "samples": 3678,
-    "positives": 1839,
-    "true_positive": 1839,
-    "false_positive": 36,
-    "true_negative": 1803,
-    "false_negative": 0,
-    "precision": 0.9808,
-    "recall": 1.0,
-    "f1": 0.9903069466882067,
-    "false_positive_rate": 0.01957585644371941,
-    "roc_auc": 0.9999961560308476
+  "test": {
+    "samples": 65896,
+    "positives": 31182,
+    "true_positive": 30865,
+    "false_positive": 76,
+    "true_negative": 34638,
+    "false_negative": 317,
+    "precision": 0.9975437122264956,
+    "recall": 0.9898338785196588,
+    "f1": 0.9936738406065386,
+    "false_positive_rate": 0.0021893184306043673,
+    "roc_auc": 0.9996167109304328
   },
+  "validation_safe_gate": {
+    "samples": 114322,
+    "positives": 76666,
+    "true_positive": 76283,
+    "false_positive": 109,
+    "true_negative": 37547,
+    "false_negative": 383,
+    "precision": 0.9985731490208398,
+    "recall": 0.9950043043852556,
+    "f1": 0.99678553228188,
+    "false_positive_rate": 0.002894625026556193,
+    "roc_auc": 0.9997008020509237
+  },
+  "test_safe_gate": {
+    "samples": 65896,
+    "positives": 31182,
+    "true_positive": 30931,
+    "false_positive": 108,
+    "true_negative": 34606,
+    "false_negative": 251,
+    "precision": 0.9965205064596153,
+    "recall": 0.9919504842537361,
+    "f1": 0.9942302438083606,
+    "false_positive_rate": 0.003111136717174627,
+    "roc_auc": 0.9996167109304328
+  },
+  "validation_safe_gate_rates": {
+    "attack_safe_rate": 0.004995695614744476,
+    "benign_safe_rate": 0.9971053749734438,
+    "review_rate": 0.6682178408355347
+  },
+  "test_safe_gate_rates": {
+    "attack_safe_rate": 0.00804951574626387,
+    "benign_safe_rate": 0.9968888632828253,
+    "review_rate": 0.471030108049047
+  },
+  "validation_score_percentiles": {
+    "benign": {
+      "p1": 2.2856669602333568e-05,
+      "p5": 8.147869812091812e-05,
+      "p25": 0.0005176900303922594,
+      "p50": 0.0018122930778190494,
+      "p75": 0.005484702065587044,
+      "p95": 0.04300188273191452,
+      "p99": 0.14798471331596375,
+      "p99.5": 0.24161511659622192
+    },
+    "injection": {
+      "p1": 0.49562308192253113,
+      "p5": 0.9333678483963013,
+      "p25": 0.9814298748970032,
+      "p50": 0.9987687468528748,
+      "p75": 0.9999662637710571,
+      "p95": 0.9999994039535522,
+      "p99": 1.0,
+      "p99.5": 1.0
+    }
+  },
+  "test_score_percentiles": {
+    "benign": {
+      "p1": 2.215264794358518e-05,
+      "p5": 7.314063986996189e-05,
+      "p25": 0.0004497343034017831,
+      "p50": 0.001625490142032504,
+      "p75": 0.006006009876728058,
+      "p95": 0.04548436403274536,
+      "p99": 0.15514391660690308,
+      "p99.5": 0.2558732330799103
+    },
+    "injection": {
+      "p1": 0.4099063575267792,
+      "p5": 0.9487597346305847,
+      "p25": 0.9997473955154419,
+      "p50": 0.9999179840087891,
+      "p75": 0.9999938011169434,
+      "p95": 0.9999998807907104,
+      "p99": 1.0,
+      "p99.5": 1.0
+    }
+  },
+  "validation_review_budget_met": true,
   "validation_triage": {
     "benign": {
-      "safe": 1744,
-      "suspicious": 58,
-      "danger": 34
+      "safe": 37547,
+      "suspicious": 34,
+      "danger": 75
     },
     "injection": {
-      "safe": 1,
-      "suspicious": 0,
-      "danger": 1835
+      "safe": 383,
+      "suspicious": 230,
+      "danger": 76053
     }
   },
-  "development_holdout_triage": {
+  "test_triage": {
     "benign": {
-      "safe": 1745,
-      "suspicious": 58,
-      "danger": 36
+      "safe": 34606,
+      "suspicious": 32,
+      "danger": 76
     },
     "injection": {
-      "safe": 0,
-      "suspicious": 0,
-      "danger": 1839
+      "safe": 251,
+      "suspicious": 66,
+      "danger": 30865
     }
   },
-  "row_id_group_fallback": false,
+  "validation_triage_by_source": {
+    "bipia-emailqa": {
+      "benign": {
+        "safe": 0,
+        "suspicious": 0,
+        "danger": 6
+      },
+      "injection": {
+        "safe": 20,
+        "suspicious": 1,
+        "danger": 54
+      }
+    },
+    "cw-l-email-corpus": {
+      "benign": {
+        "safe": 219,
+        "suspicious": 0,
+        "danger": 0
+      },
+      "injection": {
+        "safe": 0,
+        "suspicious": 0,
+        "danger": 0
+      }
+    },
+    "llmail-inject": {
+      "benign": {
+        "safe": 26,
+        "suspicious": 0,
+        "danger": 0
+      },
+      "injection": {
+        "safe": 363,
+        "suspicious": 229,
+        "danger": 75299
+      }
+    },
+    "paired-email": {
+      "benign": {
+        "safe": 679,
+        "suspicious": 6,
+        "danger": 15
+      },
+      "injection": {
+        "safe": 0,
+        "suspicious": 0,
+        "danger": 700
+      }
+    },
+    "phishing-curated": {
+      "benign": {
+        "safe": 36623,
+        "suspicious": 28,
+        "danger": 54
+      },
+      "injection": {
+        "safe": 0,
+        "suspicious": 0,
+        "danger": 0
+      }
+    }
+  },
+  "test_triage_by_source": {
+    "bipia-emailqa": {
+      "benign": {
+        "safe": 3,
+        "suspicious": 0,
+        "danger": 3
+      },
+      "injection": {
+        "safe": 26,
+        "suspicious": 0,
+        "danger": 49
+      }
+    },
+    "cw-l-email-corpus": {
+      "benign": {
+        "safe": 220,
+        "suspicious": 0,
+        "danger": 0
+      },
+      "injection": {
+        "safe": 0,
+        "suspicious": 0,
+        "danger": 0
+      }
+    },
+    "llmail-inject": {
+      "benign": {
+        "safe": 27,
+        "suspicious": 0,
+        "danger": 0
+      },
+      "injection": {
+        "safe": 222,
+        "suspicious": 65,
+        "danger": 30120
+      }
+    },
+    "paired-email": {
+      "benign": {
+        "safe": 680,
+        "suspicious": 2,
+        "danger": 18
+      },
+      "injection": {
+        "safe": 3,
+        "suspicious": 1,
+        "danger": 696
+      }
+    },
+    "phishing-curated": {
+      "benign": {
+        "safe": 33676,
+        "suspicious": 30,
+        "danger": 55
+      },
+      "injection": {
+        "safe": 0,
+        "suspicious": 0,
+        "danger": 0
+      }
+    }
+  },
   "training_sources": [
-    "data\\vendor\\prompt_injections_so_back\\defense_evaluation\\paired_emails_dataset.json",
-    "data\\processed\\llmail-train.jsonl"
+    "data/processed/training-corpus.jsonl"
   ]
 }
