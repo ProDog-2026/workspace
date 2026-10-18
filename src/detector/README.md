@@ -34,10 +34,9 @@ python -m pip install -e ".[dev]"
   학습 분할 8,044쌍: 정상·공격 16,088건
 - 전체 24,488건을 그룹 기준 train 17,138 / validation 3,672 / development holdout 3,678건으로 분리
 
-development holdout 3,678건은 파이프라인 점검용이며 최종 테스트 수치에 포함하지 않는다.
-**최종 테스트 결과는 LLMail 원본에서 처음부터 학습·validation 묶음 밖으로 분리한 3,912건만
-사용한다.** 이 분할도 LLMail 데이터 생성 체계에 속하므로 실제 Gmail 환경까지 일반화됐다는
-뜻은 아니다.
+development holdout 3,678건은 파이프라인 점검용이다. LLMail에서 별도로 보관한 3,912건도 같은
+데이터 생성 체계의 holdout이므로 독립 외부 테스트로 부르지 않는다. 독립 평가는 학습에 사용하지 않은
+[BIPIA EmailQA](https://github.com/microsoft/BIPIA) test로 수행한다.
 
 모델과 대용량 데이터는 Git에 올리지 않고 로컬에만 둔다. 추적 가능한 평가 결과는 `reports/`와
 [`../../docs/dataset/prompt-injection-baseline.md`](../../docs/dataset/prompt-injection-baseline.md)에 있다.
@@ -53,6 +52,11 @@ prodog-sast train `
 python scripts/evaluate_dataset.py `
   data/processed/llmail-external-test.jsonl `
   --output reports/llmail-external-metrics.json
+
+python scripts/evaluate_bipia.py `
+  data/vendor/BIPIA/benchmark/email/test.jsonl `
+  data/vendor/BIPIA/benchmark/text_attack_test.json `
+  --output reports/bipia-emailqa-metrics.json
 ```
 
 LLMail 원본 ZIP에서 공격 문구 해시 기준 학습/외부 평가 분할을 다시 만들 수 있다.
@@ -61,6 +65,10 @@ LLMail 원본 ZIP에서 공격 문구 해시 기준 학습/외부 평가 분할�
 python scripts/prepare_llmail_split.py `
   data/vendor/prompt_injections_so_back/defense_evaluation/llmail.zip
 ```
+
+BIPIA 원본 50개 메일과 75개 공격 지시를 시작·중간·끝에 조합한 원시 11,300건을 평가한다.
+원본에 중복 정상 메일 6건이 있어 중복 제거 지표 9,944건도 같은 보고서에 기록한다. 현재 모델은
+중복 제거 기준 공격 재현율 99.47%지만 정상 오탐률이 100%이므로 실제 운영에 사용할 수준이 아니다.
 
 ## 검사
 
