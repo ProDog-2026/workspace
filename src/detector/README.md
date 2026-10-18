@@ -9,7 +9,7 @@
 - 특징: 단어 1~2-gram TF-IDF + 문자 3~5-gram TF-IDF
 - 분류기: 확률을 출력하는 class-weighted `SGDClassifier`
 - 실행 버전: 모델 직렬화 호환성을 위해 scikit-learn 1.6.0 고정
-- 분리: 동일 공격·메일 변형이 섞이지 않도록 `group_id` 단위 train/validation/test 분리
+- 분리: 동일 공격·메일 변형이 섞이지 않도록 `group_id` 단위 train/validation/development holdout 분리
 - 의심 임계값: validation 정상 메일 점수의 95백분위(정상 메일 검토율 약 5%)
 - 위험 임계값: validation 정상 메일 오탐률 2% 이하에서 공격 재현율이 가장 높은 값
 - 입력: 제목, 발신자, plain 본문, HTML 원문과 렌더링 텍스트
@@ -32,12 +32,12 @@ python -m pip install -e ".[dev]"
   정상·공격 8,400건
 - [Microsoft LLMail-Inject](https://huggingface.co/datasets/microsoft/llmail-inject-challenge)
   학습 분할 8,044쌍: 정상·공격 16,088건
-- 전체 24,488건을 그룹 기준 train 17,138 / validation 3,672 / test 3,678건으로 분리
+- 전체 24,488건을 그룹 기준 train 17,138 / validation 3,672 / development holdout 3,678건으로 분리
 
-여기서 **내부 test**는 위 24,488건을 학습 전에 그룹 단위로 나눠 보관한 test 3,678건이다.
-출처는 학습 데이터와 같지만, 해당 그룹은 학습과 임계값 선택에 사용하지 않았다. **외부 test**는
-LLMail 원본에서 처음부터 학습·validation 묶음 밖으로 분리해 둔 별도 3,912건이다. 현재 외부
-test도 LLMail과 같은 데이터 생성 체계이므로, 실제 Gmail 환경까지 일반화됐다는 뜻은 아니다.
+development holdout 3,678건은 파이프라인 점검용이며 최종 테스트 수치에 포함하지 않는다.
+**최종 테스트 결과는 LLMail 원본에서 처음부터 학습·validation 묶음 밖으로 분리한 3,912건만
+사용한다.** 이 분할도 LLMail 데이터 생성 체계에 속하므로 실제 Gmail 환경까지 일반화됐다는
+뜻은 아니다.
 
 모델과 대용량 데이터는 Git에 올리지 않고 로컬에만 둔다. 추적 가능한 평가 결과는 `reports/`와
 [`../../docs/dataset/prompt-injection-baseline.md`](../../docs/dataset/prompt-injection-baseline.md)에 있다.

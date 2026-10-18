@@ -7,17 +7,17 @@
   "split_samples": {
     "train": 17138,
     "validation": 3672,
-    "test": 3678
+    "development_holdout": 3678
   },
   "split_group_counts": {
     "train": 8551,
     "validation": 1833,
-    "test": 1833
+    "development_holdout": 1833
   },
   "group_overlap": {
     "train_validation": false,
-    "train_test": false,
-    "validation_test": false
+    "train_development_holdout": false,
+    "validation_development_holdout": false
   },
   "validation": {
     "samples": 3672,
@@ -32,7 +32,7 @@
     "false_positive_rate": 0.018518518518518517,
     "roc_auc": 0.9998662076789079
   },
-  "test": {
+  "development_holdout": {
     "samples": 3678,
     "positives": 1839,
     "true_positive": 1839,
@@ -57,7 +57,7 @@
       "danger": 1835
     }
   },
-  "test_triage": {
+  "development_holdout_triage": {
     "benign": {
       "safe": 1745,
       "suspicious": 58,

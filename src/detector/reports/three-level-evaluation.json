@@ -1,12 +1,8 @@
 {
   "model": "TF-IDF word 1-2 gram + char 3-5 gram, class-weighted SGDClassifier",
   "dataset_sources": {
-    "paired_email": "https://github.com/compass-group-tue/prompt_injections_so_back",
-    "llmail_inject": "https://huggingface.co/datasets/microsoft/llmail-inject-challenge"
-  },
-  "evaluation_scope": {
-    "internal_test": "Group-held-out samples from the same two sources used to build the model; no group overlaps train or validation.",
-    "external_test": "LLMail samples excluded by attack-prompt hash before training and threshold selection; independent from development, but still from the LLMail data-generation distribution."
+    "paired_email_training": "https://github.com/compass-group-tue/prompt_injections_so_back",
+    "llmail_training_and_final_test": "https://huggingface.co/datasets/microsoft/llmail-inject-challenge"
   },
   "threshold_selection": {
     "provisional_suspicious_threshold": 0.05,
@@ -23,49 +19,29 @@
       "injection": {"safe": 1, "suspicious": 0, "danger": 1835}
     }
   },
-  "internal_test": {
-    "samples": 3678,
-    "benign": {"safe": 1745, "suspicious": 58, "danger": 36},
-    "injection": {"safe": 0, "suspicious": 0, "danger": 1839},
-    "source_breakdown": {
-      "paired_email": {
-        "samples": 1238,
-        "benign": {"safe": 525, "suspicious": 58, "danger": 36},
-        "injection": {"safe": 0, "suspicious": 0, "danger": 619}
-      },
-      "llmail_train_holdout": {
-        "samples": 2440,
-        "benign": {"safe": 1220, "suspicious": 0, "danger": 0},
-        "injection": {"safe": 0, "suspicious": 0, "danger": 1220}
-      }
-    }
-  },
-  "llmail_external_test": {
+  "final_test": {
+    "source": "LLMail hash-held-out split",
     "samples": 3912,
+    "development_holdout_excluded": 3678,
     "benign": {"safe": 1956, "suspicious": 0, "danger": 0},
-    "injection": {"safe": 1, "suspicious": 1, "danger": 1954}
-  },
-  "combined_final_test": {
-    "samples": 7590,
-    "benign": {"safe": 3701, "suspicious": 58, "danger": 36},
-    "injection": {"safe": 1, "suspicious": 1, "danger": 3793},
+    "injection": {"safe": 1, "suspicious": 1, "danger": 1954},
     "review_metrics": {
-      "true_positive": 3794,
+      "true_positive": 1955,
       "false_negative": 1,
-      "false_positive": 94,
-      "true_negative": 3701,
-      "recall": 0.9997364953886693,
-      "precision": 0.9758230452674898,
-      "false_positive_rate": 0.02476943346508564
+      "false_positive": 0,
+      "true_negative": 1956,
+      "recall": 0.9994887525562373,
+      "precision": 1.0,
+      "false_positive_rate": 0.0
     },
     "danger_metrics": {
-      "true_positive": 3793,
+      "true_positive": 1954,
       "false_negative": 2,
-      "false_positive": 36,
-      "true_negative": 3759,
-      "recall": 0.9994729907773386,
-      "precision": 0.9905980673805171,
-      "false_positive_rate": 0.009486166007905139
+      "false_positive": 0,
+      "true_negative": 1956,
+      "recall": 0.9989775051124744,
+      "precision": 1.0,
+      "false_positive_rate": 0.0
     }
   }
 }

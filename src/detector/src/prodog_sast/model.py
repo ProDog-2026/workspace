@@ -91,11 +91,13 @@ def _split(samples: Sequence[Sample], seed: int) -> dict[str, np.ndarray]:
     holdout_groups = groups[holdout_idx]
     holdout_labels = labels[holdout_idx]
     final_split = GroupShuffleSplit(n_splits=1, test_size=0.50, random_state=seed + 1)
-    val_rel, test_rel = next(final_split.split(holdout_idx, holdout_labels, holdout_groups))
+    val_rel, development_rel = next(
+        final_split.split(holdout_idx, holdout_labels, holdout_groups)
+    )
     result = {
         "train": indexes[train_idx],
         "validation": holdout_idx[val_rel],
-        "test": holdout_idx[test_rel],
+        "development_holdout": holdout_idx[development_rel],
     }
     for name, values in result.items():
         _check_partition(name, labels[values])
@@ -204,7 +206,9 @@ def train(
     )
     if suspicious_threshold >= danger_threshold:
         raise ValueError("review rate must produce a threshold below the danger threshold")
-    test_probability = pipeline.predict_proba(texts[split["test"]].tolist())[:, 1]
+    development_probability = pipeline.predict_proba(
+        texts[split["development_holdout"]].tolist()
+    )[:, 1]
 
     split_groups = {
         name: sorted(set(groups[indexes].tolist())) for name, indexes in split.items()
@@ -231,16 +235,23 @@ def train(
             "train_validation": bool(
                 set(split_groups["train"]) & set(split_groups["validation"])
             ),
-            "train_test": bool(set(split_groups["train"]) & set(split_groups["test"])),
-            "validation_test": bool(
-                set(split_groups["validation"]) & set(split_groups["test"])
+            "train_development_holdout": bool(
+                set(split_groups["train"]) & set(split_groups["development_holdout"])
+            ),
+            "validation_development_holdout": bool(
+                set(split_groups["validation"])
+                & set(split_groups["development_holdout"])
             ),
         },
         "validation": asdict(
             _metrics(labels[split["validation"]], val_probability, danger_threshold)
         ),
-        "test": asdict(
-            _metrics(labels[split["test"]], test_probability, danger_threshold)
+        "development_holdout": asdict(
+            _metrics(
+                labels[split["development_holdout"]],
+                development_probability,
+                danger_threshold,
+            )
         ),
         "validation_triage": _triage_counts(
             labels[split["validation"]],
@@ -248,9 +259,9 @@ def train(
             suspicious_threshold,
             danger_threshold,
         ),
-        "test_triage": _triage_counts(
-            labels[split["test"]],
-            test_probability,
+        "development_holdout_triage": _triage_counts(
+            labels[split["development_holdout"]],
+            development_probability,
             suspicious_threshold,
             danger_threshold,
         ),
