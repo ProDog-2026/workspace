@@ -1,5 +1,7 @@
 {
   "threshold": 0.08877245225083939,
+  "suspicious_threshold": 0.08877245225083939,
+  "malicious_threshold": 0.5,
   "max_validation_fpr": 0.02,
   "split_samples": {
     "train": 17138,

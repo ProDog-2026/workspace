@@ -19,6 +19,8 @@ from sklearn.pipeline import FeatureUnion, Pipeline
 
 from .data import Sample
 
+DEFAULT_MALICIOUS_THRESHOLD = 0.5
+
 
 @dataclass(frozen=True)
 class Metrics:
@@ -149,9 +151,12 @@ def train(
     *,
     seed: int = 42,
     max_validation_fpr: float = 0.02,
+    malicious_threshold: float = DEFAULT_MALICIOUS_THRESHOLD,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     if not 0 <= max_validation_fpr <= 1:
         raise ValueError("max_validation_fpr must be between 0 and 1")
+    if not 0 < malicious_threshold <= 1:
+        raise ValueError("malicious_threshold must be greater than 0 and at most 1")
     split = _split(samples, seed)
     texts = np.array([sample.text for sample in samples], dtype=object)
     labels = np.array([sample.label for sample in samples], dtype=int)
@@ -161,6 +166,8 @@ def train(
     pipeline.fit(texts[split["train"]].tolist(), labels[split["train"]])
     val_probability = pipeline.predict_proba(texts[split["validation"]].tolist())[:, 1]
     threshold = _threshold(labels[split["validation"]], val_probability, max_validation_fpr)
+    if threshold >= malicious_threshold:
+        raise ValueError("malicious_threshold must be greater than the suspicious threshold")
     test_probability = pipeline.predict_proba(texts[split["test"]].tolist())[:, 1]
 
     split_groups = {
@@ -171,10 +178,15 @@ def train(
         "created_at": datetime.now(timezone.utc).isoformat(),
         "sklearn_version": sklearn.__version__,
         "pipeline": pipeline,
+        # Keep threshold for artifacts created before the three-level verdict contract.
         "threshold": threshold,
+        "suspicious_threshold": threshold,
+        "malicious_threshold": malicious_threshold,
     }
     report = {
         "threshold": threshold,
+        "suspicious_threshold": threshold,
+        "malicious_threshold": malicious_threshold,
         "max_validation_fpr": max_validation_fpr,
         "split_samples": {name: int(len(indexes)) for name, indexes in split.items()},
         "split_group_counts": {name: len(values) for name, values in split_groups.items()},
@@ -218,12 +230,28 @@ def load_artifact(path: str | Path) -> dict[str, Any]:
 
 def predict(artifact: dict[str, Any], texts: Sequence[str]) -> list[dict[str, Any]]:
     probabilities = artifact["pipeline"].predict_proba(list(texts))[:, 1]
-    threshold = float(artifact["threshold"])
+    suspicious_threshold = float(
+        artifact.get("suspicious_threshold", artifact["threshold"])
+    )
+    malicious_threshold = float(
+        artifact.get("malicious_threshold", DEFAULT_MALICIOUS_THRESHOLD)
+    )
+    if not 0 <= suspicious_threshold < malicious_threshold <= 1:
+        raise ValueError("artifact thresholds must satisfy 0 <= suspicious < malicious <= 1")
+
+    def verdict(probability: float) -> str:
+        if probability >= malicious_threshold:
+            return "malicious"
+        if probability >= suspicious_threshold:
+            return "suspicious"
+        return "benign"
+
     return [
         {
             "prompt_injection_probability": round(float(probability), 6),
-            "threshold": round(threshold, 6),
-            "verdict": "suspicious" if probability >= threshold else "benign",
+            "suspicious_threshold": round(suspicious_threshold, 6),
+            "malicious_threshold": round(malicious_threshold, 6),
+            "verdict": verdict(float(probability)),
         }
         for probability in probabilities
     ]

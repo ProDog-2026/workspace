@@ -1,7 +1,13 @@
 {
-  "source": "data\\processed\\llmail-external-test.jsonl",
+  "source": "data/processed/llmail-external-test.jsonl",
   "samples": 3912,
-  "threshold": 0.08877245225083939,
+  "suspicious_threshold": 0.08877245225083939,
+  "malicious_threshold": 0.5,
+  "verdict_counts": {
+    "benign": 1958,
+    "suspicious": 7,
+    "malicious": 1947
+  },
   "true_positive": 1954,
   "false_negative": 2,
   "false_positive": 0,

@@ -2,6 +2,8 @@ import json
 from email.message import EmailMessage
 from pathlib import Path
 
+import numpy as np
+
 from prodog_sast.data import Sample, load_samples
 from prodog_sast.email_text import (
     collect_api_to_model_text,
@@ -9,6 +11,12 @@ from prodog_sast.email_text import (
     message_to_model_text,
 )
 from prodog_sast.model import load_artifact, predict, save_artifact, train
+
+
+class FixedProbabilityPipeline:
+    def predict_proba(self, texts):
+        probabilities = [float(text) for text in texts]
+        return np.array([[1 - value, value] for value in probabilities])
 
 
 def test_email_serialization_keeps_raw_and_rendered_html() -> None:
@@ -75,7 +83,12 @@ def test_training_is_group_safe_and_roundtrips_predictions(tmp_path: Path) -> No
             )
         )
 
-    artifact, report = train(samples, seed=7, max_validation_fpr=0.1)
+    artifact, report = train(
+        samples,
+        seed=7,
+        max_validation_fpr=0.1,
+        malicious_threshold=1.0,
+    )
     model_path = tmp_path / "model.joblib"
     save_artifact(artifact, model_path)
     loaded = load_artifact(model_path)
@@ -90,7 +103,25 @@ def test_training_is_group_safe_and_roundtrips_predictions(tmp_path: Path) -> No
     )
 
     assert not any(report["group_overlap"].values())
+    assert artifact["suspicious_threshold"] < artifact["malicious_threshold"]
     assert attack["prompt_injection_probability"] > benign["prompt_injection_probability"]
+
+
+def test_prediction_has_three_verdict_levels_and_supports_old_artifacts() -> None:
+    artifact = {
+        "pipeline": FixedProbabilityPipeline(),
+        "threshold": 0.1,
+    }
+
+    results = predict(artifact, ["0.05", "0.2", "0.8"])
+
+    assert [result["verdict"] for result in results] == [
+        "benign",
+        "suspicious",
+        "malicious",
+    ]
+    assert results[0]["suspicious_threshold"] == 0.1
+    assert results[0]["malicious_threshold"] == 0.5
 
 
 def test_paired_dataset_is_expanded_without_user_prompt(tmp_path) -> None:

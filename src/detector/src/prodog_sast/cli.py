@@ -21,6 +21,7 @@ def _train(args: argparse.Namespace) -> int:
         samples,
         seed=args.seed,
         max_validation_fpr=args.max_validation_fpr,
+        malicious_threshold=args.malicious_threshold,
     )
     report["row_id_group_fallback"] = used_row_groups
     report["training_sources"] = args.data
@@ -63,7 +64,9 @@ def _scan(args: argparse.Namespace) -> int:
         for name, result in zip(names, results, strict=True)
     ]
     print(json.dumps(rendered, ensure_ascii=False, indent=2))
-    if args.fail_on_detect and any(item["verdict"] == "suspicious" for item in rendered):
+    if args.fail_on_detect and any(
+        item["verdict"] in {"suspicious", "malicious"} for item in rendered
+    ):
         return 2
     return 0
 
@@ -83,6 +86,7 @@ def build_parser() -> argparse.ArgumentParser:
     train_parser.add_argument("--report", default="reports/metrics.json")
     train_parser.add_argument("--seed", type=int, default=42)
     train_parser.add_argument("--max-validation-fpr", type=float, default=0.02)
+    train_parser.add_argument("--malicious-threshold", type=float, default=0.5)
     train_parser.set_defaults(handler=_train)
 
     scan_parser = subparsers.add_parser("scan", help="scan .eml or UTF-8 text files")
