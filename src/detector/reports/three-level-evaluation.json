@@ -1,5 +1,13 @@
 {
   "model": "TF-IDF word 1-2 gram + char 3-5 gram, class-weighted SGDClassifier",
+  "dataset_sources": {
+    "paired_email": "https://github.com/compass-group-tue/prompt_injections_so_back",
+    "llmail_inject": "https://huggingface.co/datasets/microsoft/llmail-inject-challenge"
+  },
+  "evaluation_scope": {
+    "internal_test": "Group-held-out samples from the same two sources used to build the model; no group overlaps train or validation.",
+    "external_test": "LLMail samples excluded by attack-prompt hash before training and threshold selection; independent from development, but still from the LLMail data-generation distribution."
+  },
   "threshold_selection": {
     "provisional_suspicious_threshold": 0.05,
     "selected_suspicious_threshold": 0.0400186634741522,

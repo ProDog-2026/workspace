@@ -28,9 +28,16 @@ python -m pip install -e ".[dev]"
 
 `models/prompt_injection.joblib`은 다음 데이터로 생성했다.
 
-- Paired Email Dataset 4,200쌍: 정상·공격 8,400건
-- Microsoft LLMail-Inject 학습 분할 8,044쌍: 정상·공격 16,088건
+- [Paired Email Dataset](https://github.com/compass-group-tue/prompt_injections_so_back) 4,200쌍:
+  정상·공격 8,400건
+- [Microsoft LLMail-Inject](https://huggingface.co/datasets/microsoft/llmail-inject-challenge)
+  학습 분할 8,044쌍: 정상·공격 16,088건
 - 전체 24,488건을 그룹 기준 train 17,138 / validation 3,672 / test 3,678건으로 분리
+
+여기서 **내부 test**는 위 24,488건을 학습 전에 그룹 단위로 나눠 보관한 test 3,678건이다.
+출처는 학습 데이터와 같지만, 해당 그룹은 학습과 임계값 선택에 사용하지 않았다. **외부 test**는
+LLMail 원본에서 처음부터 학습·validation 묶음 밖으로 분리해 둔 별도 3,912건이다. 현재 외부
+test도 LLMail과 같은 데이터 생성 체계이므로, 실제 Gmail 환경까지 일반화됐다는 뜻은 아니다.
 
 모델과 대용량 데이터는 Git에 올리지 않고 로컬에만 둔다. 추적 가능한 평가 결과는 `reports/`와
 [`../../docs/dataset/prompt-injection-baseline.md`](../../docs/dataset/prompt-injection-baseline.md)에 있다.
