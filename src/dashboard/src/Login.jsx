@@ -1,3 +1,5 @@
+import { useState } from 'react'
+import { gmail } from './api'
 import { Logo } from './ui'
 
 // Google 공식 Sign-In 브랜딩의 'G' (색·모양 변경 금지)
@@ -22,6 +24,25 @@ function LockIcon() {
 }
 
 export default function Login() {
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+
+  const connect = async () => {
+    setBusy(true)
+    setError('')
+    try {
+      // POST 직전에 받은 세션의 CSRF 토큰으로 OAuth 시작 요청을 보낸다.
+      const session = await gmail('/api/session')
+      if (session.mode !== 'google') throw new Error('Gmail 서버가 데모 모드입니다. APP_MODE=google로 바꾸고 서버를 다시 시작해 주세요.')
+      if (!session.configured) throw new Error('Google OAuth 설정이 필요합니다. Gmail 서버의 환경변수를 확인해 주세요.')
+      const { authorization_url } = await gmail('/api/oauth/google/start', session.csrf_token)
+      location.assign(authorization_url)
+    } catch (e) {
+      setError(e.message)
+      setBusy(false)
+    }
+  }
+
   return (
     <main className="login">
       <div className="login-wrap">
@@ -29,8 +50,10 @@ export default function Login() {
         <div className="login-box">
           <h1>로그인</h1>
           <p className="login-sub">Google 계정으로 로그인하면 Gmail 받은편지함을 검사해요.</p>
-          {/* 데모: 실제로는 Supabase Auth 의 Google OAuth (signInWithOAuth) 로 교체 */}
-          <a className="gbtn" href="#/"><GoogleG />Google 계정으로 로그인</a>
+          <button type="button" className="gbtn" disabled={busy} onClick={connect}>
+            <GoogleG />{busy ? 'Google로 이동 중…' : 'Google 계정으로 로그인'}
+          </button>
+          {error && <p className="note error" role="alert">{error}</p>}
           <p className="fine"><LockIcon />메일 읽기 권한만 요청해요.</p>
         </div>
         <p className="copy"><span>이용약관</span><b>개인정보처리방침</b><span>© 2026 ProDog 캡스톤 팀</span></p>
