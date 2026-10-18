@@ -19,7 +19,8 @@ from sklearn.pipeline import FeatureUnion, Pipeline
 
 from .data import Sample
 
-DEFAULT_MALICIOUS_THRESHOLD = 0.5
+# Derived from the 95th percentile of benign validation scores in the current model.
+DEFAULT_SUSPICIOUS_THRESHOLD = 0.0400186634741522
 
 
 @dataclass(frozen=True)
@@ -123,6 +124,36 @@ def _threshold(labels: np.ndarray, probabilities: np.ndarray, max_fpr: float) ->
     return -best[2]
 
 
+def _review_threshold(
+    labels: np.ndarray,
+    probabilities: np.ndarray,
+    max_review_rate: float,
+) -> float:
+    benign = probabilities[labels == 0]
+    return float(np.quantile(benign, 1 - max_review_rate, method="higher"))
+
+
+def _triage_counts(
+    labels: np.ndarray,
+    probabilities: np.ndarray,
+    suspicious_threshold: float,
+    danger_threshold: float,
+) -> dict[str, dict[str, int]]:
+    def counts(mask: np.ndarray) -> dict[str, int]:
+        values = probabilities[mask]
+        return {
+            "safe": int(np.sum(values < suspicious_threshold)),
+            "suspicious": int(
+                np.sum(
+                    (values >= suspicious_threshold) & (values < danger_threshold)
+                )
+            ),
+            "danger": int(np.sum(values >= danger_threshold)),
+        }
+
+    return {"benign": counts(labels == 0), "injection": counts(labels == 1)}
+
+
 def _metrics(labels: np.ndarray, probabilities: np.ndarray, threshold: float) -> Metrics:
     predicted = (probabilities >= threshold).astype(int)
     positives = labels == 1
@@ -151,12 +182,12 @@ def train(
     *,
     seed: int = 42,
     max_validation_fpr: float = 0.02,
-    malicious_threshold: float = DEFAULT_MALICIOUS_THRESHOLD,
+    max_validation_review_rate: float = 0.05,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     if not 0 <= max_validation_fpr <= 1:
         raise ValueError("max_validation_fpr must be between 0 and 1")
-    if not 0 < malicious_threshold <= 1:
-        raise ValueError("malicious_threshold must be greater than 0 and at most 1")
+    if not 0 < max_validation_review_rate < 1:
+        raise ValueError("max_validation_review_rate must be between 0 and 1")
     split = _split(samples, seed)
     texts = np.array([sample.text for sample in samples], dtype=object)
     labels = np.array([sample.label for sample in samples], dtype=int)
@@ -165,9 +196,14 @@ def train(
     pipeline = build_pipeline(seed)
     pipeline.fit(texts[split["train"]].tolist(), labels[split["train"]])
     val_probability = pipeline.predict_proba(texts[split["validation"]].tolist())[:, 1]
-    threshold = _threshold(labels[split["validation"]], val_probability, max_validation_fpr)
-    if threshold >= malicious_threshold:
-        raise ValueError("malicious_threshold must be greater than the suspicious threshold")
+    danger_threshold = _threshold(
+        labels[split["validation"]], val_probability, max_validation_fpr
+    )
+    suspicious_threshold = _review_threshold(
+        labels[split["validation"]], val_probability, max_validation_review_rate
+    )
+    if suspicious_threshold >= danger_threshold:
+        raise ValueError("review rate must produce a threshold below the danger threshold")
     test_probability = pipeline.predict_proba(texts[split["test"]].tolist())[:, 1]
 
     split_groups = {
@@ -179,15 +215,16 @@ def train(
         "sklearn_version": sklearn.__version__,
         "pipeline": pipeline,
         # Keep threshold for artifacts created before the three-level verdict contract.
-        "threshold": threshold,
-        "suspicious_threshold": threshold,
-        "malicious_threshold": malicious_threshold,
+        "threshold": danger_threshold,
+        "suspicious_threshold": suspicious_threshold,
+        "danger_threshold": danger_threshold,
     }
     report = {
-        "threshold": threshold,
-        "suspicious_threshold": threshold,
-        "malicious_threshold": malicious_threshold,
+        "threshold": danger_threshold,
+        "suspicious_threshold": suspicious_threshold,
+        "danger_threshold": danger_threshold,
         "max_validation_fpr": max_validation_fpr,
+        "max_validation_review_rate": max_validation_review_rate,
         "split_samples": {name: int(len(indexes)) for name, indexes in split.items()},
         "split_group_counts": {name: len(values) for name, values in split_groups.items()},
         "group_overlap": {
@@ -200,9 +237,23 @@ def train(
             ),
         },
         "validation": asdict(
-            _metrics(labels[split["validation"]], val_probability, threshold)
+            _metrics(labels[split["validation"]], val_probability, danger_threshold)
         ),
-        "test": asdict(_metrics(labels[split["test"]], test_probability, threshold)),
+        "test": asdict(
+            _metrics(labels[split["test"]], test_probability, danger_threshold)
+        ),
+        "validation_triage": _triage_counts(
+            labels[split["validation"]],
+            val_probability,
+            suspicious_threshold,
+            danger_threshold,
+        ),
+        "test_triage": _triage_counts(
+            labels[split["test"]],
+            test_probability,
+            suspicious_threshold,
+            danger_threshold,
+        ),
     }
     artifact["report"] = report
     return artifact, report
@@ -231,26 +282,24 @@ def load_artifact(path: str | Path) -> dict[str, Any]:
 def predict(artifact: dict[str, Any], texts: Sequence[str]) -> list[dict[str, Any]]:
     probabilities = artifact["pipeline"].predict_proba(list(texts))[:, 1]
     suspicious_threshold = float(
-        artifact.get("suspicious_threshold", artifact["threshold"])
+        artifact.get("suspicious_threshold", DEFAULT_SUSPICIOUS_THRESHOLD)
     )
-    malicious_threshold = float(
-        artifact.get("malicious_threshold", DEFAULT_MALICIOUS_THRESHOLD)
-    )
-    if not 0 <= suspicious_threshold < malicious_threshold <= 1:
-        raise ValueError("artifact thresholds must satisfy 0 <= suspicious < malicious <= 1")
+    danger_threshold = float(artifact.get("danger_threshold", artifact["threshold"]))
+    if not 0 <= suspicious_threshold < danger_threshold <= 1:
+        raise ValueError("artifact thresholds must satisfy 0 <= suspicious < danger <= 1")
 
     def verdict(probability: float) -> str:
-        if probability >= malicious_threshold:
-            return "malicious"
+        if probability >= danger_threshold:
+            return "danger"
         if probability >= suspicious_threshold:
             return "suspicious"
-        return "benign"
+        return "safe"
 
     return [
         {
             "prompt_injection_probability": round(float(probability), 6),
             "suspicious_threshold": round(suspicious_threshold, 6),
-            "malicious_threshold": round(malicious_threshold, 6),
+            "danger_threshold": round(danger_threshold, 6),
             "verdict": verdict(float(probability)),
         }
         for probability in probabilities

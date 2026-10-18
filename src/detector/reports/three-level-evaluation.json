@@ -1,0 +1,63 @@
+{
+  "model": "TF-IDF word 1-2 gram + char 3-5 gram, class-weighted SGDClassifier",
+  "threshold_selection": {
+    "provisional_suspicious_threshold": 0.05,
+    "selected_suspicious_threshold": 0.0400186634741522,
+    "danger_threshold": 0.08877245225083939,
+    "selection_data": "validation only",
+    "selection_rule": "suspicious is the 95th percentile of benign validation scores; danger maximizes attack recall while benign validation FPR stays at or below 2%",
+    "provisional_validation_triage": {
+      "benign": {"safe": 1772, "suspicious": 30, "danger": 34},
+      "injection": {"safe": 1, "suspicious": 0, "danger": 1835}
+    },
+    "selected_validation_triage": {
+      "benign": {"safe": 1744, "suspicious": 58, "danger": 34},
+      "injection": {"safe": 1, "suspicious": 0, "danger": 1835}
+    }
+  },
+  "internal_test": {
+    "samples": 3678,
+    "benign": {"safe": 1745, "suspicious": 58, "danger": 36},
+    "injection": {"safe": 0, "suspicious": 0, "danger": 1839},
+    "source_breakdown": {
+      "paired_email": {
+        "samples": 1238,
+        "benign": {"safe": 525, "suspicious": 58, "danger": 36},
+        "injection": {"safe": 0, "suspicious": 0, "danger": 619}
+      },
+      "llmail_train_holdout": {
+        "samples": 2440,
+        "benign": {"safe": 1220, "suspicious": 0, "danger": 0},
+        "injection": {"safe": 0, "suspicious": 0, "danger": 1220}
+      }
+    }
+  },
+  "llmail_external_test": {
+    "samples": 3912,
+    "benign": {"safe": 1956, "suspicious": 0, "danger": 0},
+    "injection": {"safe": 1, "suspicious": 1, "danger": 1954}
+  },
+  "combined_final_test": {
+    "samples": 7590,
+    "benign": {"safe": 3701, "suspicious": 58, "danger": 36},
+    "injection": {"safe": 1, "suspicious": 1, "danger": 3793},
+    "review_metrics": {
+      "true_positive": 3794,
+      "false_negative": 1,
+      "false_positive": 94,
+      "true_negative": 3701,
+      "recall": 0.9997364953886693,
+      "precision": 0.9758230452674898,
+      "false_positive_rate": 0.02476943346508564
+    },
+    "danger_metrics": {
+      "true_positive": 3793,
+      "false_negative": 2,
+      "false_positive": 36,
+      "true_negative": 3759,
+      "recall": 0.9994729907773386,
+      "precision": 0.9905980673805171,
+      "false_positive_rate": 0.009486166007905139
+    }
+  }
+}

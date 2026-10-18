@@ -87,7 +87,7 @@ def test_training_is_group_safe_and_roundtrips_predictions(tmp_path: Path) -> No
         samples,
         seed=7,
         max_validation_fpr=0.1,
-        malicious_threshold=1.0,
+        max_validation_review_rate=0.5,
     )
     model_path = tmp_path / "model.joblib"
     save_artifact(artifact, model_path)
@@ -103,7 +103,7 @@ def test_training_is_group_safe_and_roundtrips_predictions(tmp_path: Path) -> No
     )
 
     assert not any(report["group_overlap"].values())
-    assert artifact["suspicious_threshold"] < artifact["malicious_threshold"]
+    assert artifact["suspicious_threshold"] < artifact["danger_threshold"]
     assert attack["prompt_injection_probability"] > benign["prompt_injection_probability"]
 
 
@@ -113,15 +113,15 @@ def test_prediction_has_three_verdict_levels_and_supports_old_artifacts() -> Non
         "threshold": 0.1,
     }
 
-    results = predict(artifact, ["0.05", "0.2", "0.8"])
+    results = predict(artifact, ["0.02", "0.06", "0.2"])
 
     assert [result["verdict"] for result in results] == [
-        "benign",
+        "safe",
         "suspicious",
-        "malicious",
+        "danger",
     ]
-    assert results[0]["suspicious_threshold"] == 0.1
-    assert results[0]["malicious_threshold"] == 0.5
+    assert results[0]["suspicious_threshold"] == 0.040019
+    assert results[0]["danger_threshold"] == 0.1
 
 
 def test_paired_dataset_is_expanded_without_user_prompt(tmp_path) -> None:

@@ -1,8 +1,9 @@
 {
   "threshold": 0.08877245225083939,
-  "suspicious_threshold": 0.08877245225083939,
-  "malicious_threshold": 0.5,
+  "suspicious_threshold": 0.0400186634741522,
+  "danger_threshold": 0.08877245225083939,
   "max_validation_fpr": 0.02,
+  "max_validation_review_rate": 0.05,
   "split_samples": {
     "train": 17138,
     "validation": 3672,
@@ -43,6 +44,30 @@
     "f1": 0.9903069466882067,
     "false_positive_rate": 0.01957585644371941,
     "roc_auc": 0.9999961560308476
+  },
+  "validation_triage": {
+    "benign": {
+      "safe": 1744,
+      "suspicious": 58,
+      "danger": 34
+    },
+    "injection": {
+      "safe": 1,
+      "suspicious": 0,
+      "danger": 1835
+    }
+  },
+  "test_triage": {
+    "benign": {
+      "safe": 1745,
+      "suspicious": 58,
+      "danger": 36
+    },
+    "injection": {
+      "safe": 0,
+      "suspicious": 0,
+      "danger": 1839
+    }
   },
   "row_id_group_fallback": false,
   "training_sources": [

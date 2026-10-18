@@ -52,10 +52,13 @@ train/validation/test 사이 그룹 중복은 0건이다. validation 정상 오�
 - 문자 특징: 3~5-gram TF-IDF, 최대 160,000개
 - 분류기: class-weighted `SGDClassifier(loss="log_loss")`
 - 학습 라이브러리: scikit-learn 1.6.0
-- 출력: 인젝션 확률, 의심·악성 임계값, `benign`·`suspicious`·`malicious`
+- 출력: 인젝션 확률, 의심·위험 임계값, `safe`·`suspicious`·`danger`
 
-의심 임계값은 기존처럼 validation 정상 메일 오탐률 2% 이하에서 정한다. 악성은 별도로
-학습된 클래스가 아니라 모델 확률 `0.5` 이상을 나타내는 높은 신뢰도 단계다.
+위험 임계값 `0.08877245225083939`는 validation 정상 메일 오탐률을 2% 이하로 제한하면서
+공격 재현율이 가장 높은 값이다. 임시 의심 임계값 `0.05`를 검증한 뒤, 정상 validation 점수의
+95백분위인 `0.0400186634741522`로 조정했다. 이 값은 위험을 포함해 정상 메일 약 5%만 검토
+대상으로 두기 위한 운영 기준이다. 세 단계는 별도로 학습한 3개 클래스가 아니라 하나의 이진
+모델 점수를 두 임계값으로 나눈 위험 구간이다.
 
 Gmail 수집 API의 `subject`, `sender`, `text_plain`, `text_html`을 메모리에서 변환한다. 수집 계약에
 `reply_to`가 없으므로 Gmail 연동에서는 Reply-To를 사용하지 않고, `.eml` 직접 검사에서만 분석한다.
