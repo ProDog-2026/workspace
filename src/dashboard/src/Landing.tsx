@@ -30,7 +30,7 @@ function Envelope({ alert }: { alert?: boolean }) {
 
 type Rect = { x: number; y: number; w: number; h: number }
 
-function MailScene({ onOpen }: { onOpen: (r: Rect) => void }) {
+function MailScene({ onOpen, disabled }: { onOpen: (r: Rect) => void; disabled: boolean }) {
   return (
     <div className="scene">
       <div className="scene-plane">
@@ -40,7 +40,7 @@ function MailScene({ onOpen }: { onOpen: (r: Rect) => void }) {
           if (i === HOT) {
             // 빨간 메일 = 대시보드로 들어가는 버튼
             return (
-              <button key={i} type="button" className="tile hot" aria-label="위험 메일 확인하러 대시보드로 가기"
+              <button key={i} type="button" className="tile hot" aria-label="위험 메일 확인하기" disabled={disabled}
                 onClick={(e) => { const b = e.currentTarget.getBoundingClientRect(); onOpen({ x: b.left, y: b.top, w: b.width, h: b.height }) }}>
                 <Envelope alert />
               </button>
@@ -142,10 +142,17 @@ function Launch({ from }: { from: Rect }) {
 export default function Landing() {
   const [launch, setLaunch] = useState<Rect | null>(null)
   // 로그인 상태면 '로그인' 대신 대시보드로 보냄 (다시 로그인하지 않게)
-  const [loggedIn, setLoggedIn] = useState(false)
-  useEffect(() => { isLoggedIn().then(setLoggedIn) }, [])
-  const next = loggedIn ? '#/' : '#/login'
+  const [loggedIn, setLoggedIn] = useState<boolean | null>(null)
+  useEffect(() => {
+    let active = true
+    isLoggedIn().then((value) => { if (active) setLoggedIn(value) })
+    return () => { active = false }
+  }, [])
+  const checkingLogin = loggedIn === null
+  const next = checkingLogin ? undefined : loggedIn ? '#/' : '#/login'
   const open = (r: Rect) => {
+    if (checkingLogin) return
+    if (!loggedIn) { location.hash = '#/login'; return }
     if (matchMedia('(prefers-reduced-motion: reduce)').matches) { location.hash = '#/'; return }
     setLaunch(r)
   }
@@ -160,7 +167,7 @@ export default function Landing() {
     <div className="min-h-screen bg-[#f9fafb] px-4 py-6 md:px-8 md:py-10 font-sans antialiased">
       <section className="relative w-full max-w-[1400px] mx-auto rounded-[48px] bg-white border border-slate-200/50 shadow-[0_40px_100px_-20px_rgba(0,0,0,0.03)] overflow-hidden h-[600px] flex flex-col">
         <div className="absolute inset-0 pointer-events-none z-0 overflow-hidden select-none" aria-hidden="true">
-          <MailScene onOpen={open} />
+          <MailScene onOpen={open} disabled={checkingLogin} />
         </div>
 
         <div className="relative z-20 flex-1 px-8 md:px-16 pt-12 md:pt-16 flex flex-col items-start pointer-events-none">
@@ -173,11 +180,12 @@ export default function Landing() {
             </p>
             <motion.a
               href={next}
+              aria-disabled={checkingLogin}
               whileHover={{ scale: 1.04 }}
               whileTap={{ scale: 0.97 }}
-              className="mt-8 inline-flex items-center bg-[#0a152d] text-white rounded-full px-6 py-3 text-[14px] font-semibold no-underline"
+              className={cn('mt-8 inline-flex items-center bg-[#0a152d] text-white rounded-full px-6 py-3 text-[14px] font-semibold no-underline', checkingLogin && 'pointer-events-none opacity-60')}
             >
-              시작하기
+              {checkingLogin ? '로그인 확인 중…' : '시작하기'}
             </motion.a>
           </motion.div>
         </div>
@@ -185,12 +193,13 @@ export default function Landing() {
         {/* 로그인: 히어로 오른쪽 위에 따로 */}
         <motion.a
           href={next}
+          aria-disabled={checkingLogin}
           initial={{ opacity: 0, y: -8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.3, ease: [0.22, 1, 0.36, 1] }}
-          className={cn(pill, 'absolute top-8 right-8 md:top-10 md:right-12 z-30 inline-flex items-center gap-1 no-underline whitespace-nowrap')}
+          className={cn(pill, 'absolute top-8 right-8 md:top-10 md:right-12 z-30 inline-flex items-center gap-1 no-underline whitespace-nowrap', checkingLogin && 'pointer-events-none opacity-60')}
         >
-          {loggedIn ? '대시보드' : '로그인'} <ChevronRight className="w-3.5 h-3.5" />
+          {checkingLogin ? '확인 중…' : loggedIn ? '대시보드' : '로그인'} <ChevronRight className="w-3.5 h-3.5" />
         </motion.a>
       </section>
 
