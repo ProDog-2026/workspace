@@ -3,6 +3,7 @@ import { motion, useAnimate } from 'motion/react'
 import { ChevronRight } from 'lucide-react'
 import { clsx, type ClassValue } from 'clsx'
 import { twMerge } from 'tailwind-merge'
+import { isLoggedIn } from './api'
 import './landing.css'
 
 const cn = (...c: ClassValue[]) => twMerge(clsx(c))
@@ -140,6 +141,10 @@ function Launch({ from }: { from: Rect }) {
 
 export default function Landing() {
   const [launch, setLaunch] = useState<Rect | null>(null)
+  // 로그인 상태면 '로그인' 대신 대시보드로 보냄 (다시 로그인하지 않게)
+  const [loggedIn, setLoggedIn] = useState(false)
+  useEffect(() => { isLoggedIn().then(setLoggedIn) }, [])
+  const next = loggedIn ? '#/' : '#/login'
   const open = (r: Rect) => {
     if (matchMedia('(prefers-reduced-motion: reduce)').matches) { location.hash = '#/'; return }
     setLaunch(r)
@@ -167,7 +172,7 @@ export default function Landing() {
               흰 글씨, HTML 주석, 외부 전송 링크까지. Gmail 메일을 AI에게 맡기기 전에 숨겨진 지시문을 먼저 찾아 드려요.
             </p>
             <motion.a
-              href="#/login"
+              href={next}
               whileHover={{ scale: 1.04 }}
               whileTap={{ scale: 0.97 }}
               className="mt-8 inline-flex items-center bg-[#0a152d] text-white rounded-full px-6 py-3 text-[14px] font-semibold no-underline"
@@ -179,13 +184,13 @@ export default function Landing() {
 
         {/* 로그인: 히어로 오른쪽 위에 따로 */}
         <motion.a
-          href="#/login"
+          href={next}
           initial={{ opacity: 0, y: -8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.3, ease: [0.22, 1, 0.36, 1] }}
           className={cn(pill, 'absolute top-8 right-8 md:top-10 md:right-12 z-30 inline-flex items-center gap-1 no-underline whitespace-nowrap')}
         >
-          로그인 <ChevronRight className="w-3.5 h-3.5" />
+          {loggedIn ? '대시보드' : '로그인'} <ChevronRight className="w-3.5 h-3.5" />
         </motion.a>
       </section>
 

@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { gmail } from './api'
+import { useEffect, useState } from 'react'
+import { gmail, isLoggedIn } from './api'
 import { Logo } from './ui'
 
 // Google 공식 Sign-In 브랜딩의 'G' (색·모양 변경 금지)
@@ -26,6 +26,8 @@ function LockIcon() {
 export default function Login() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  // 이미 로그인된 상태로 이 화면에 오면 OAuth 를 다시 하지 않고 대시보드로
+  useEffect(() => { isLoggedIn().then((ok) => { if (ok) location.hash = '#/' }) }, [])
 
   const connect = async () => {
     setBusy(true)
