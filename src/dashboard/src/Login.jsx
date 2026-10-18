@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { gmail } from './api'
+import { useEffect, useState } from 'react'
+import { gmail, isLoggedIn } from './api'
 import { Logo } from './ui'
 
 // Google 공식 Sign-In 브랜딩의 'G' (색·모양 변경 금지)
@@ -24,10 +24,22 @@ function LockIcon() {
 }
 
 export default function Login() {
+  const [checking, setChecking] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  // 이미 로그인된 상태로 이 화면에 오면 OAuth 를 다시 하지 않고 대시보드로
+  useEffect(() => {
+    let active = true
+    isLoggedIn().then((ok) => {
+      if (!active) return
+      if (ok) location.hash = '#/'
+      else setChecking(false)
+    })
+    return () => { active = false }
+  }, [])
 
   const connect = async () => {
+    if (checking) return
     setBusy(true)
     setError('')
     try {
@@ -50,8 +62,8 @@ export default function Login() {
         <div className="login-box">
           <h1>로그인</h1>
           <p className="login-sub">Google 계정으로 로그인하면 Gmail 받은편지함을 검사해요.</p>
-          <button type="button" className="gbtn" disabled={busy} onClick={connect}>
-            <GoogleG />{busy ? 'Google로 이동 중…' : 'Google 계정으로 로그인'}
+          <button type="button" className="gbtn" disabled={checking || busy} onClick={connect}>
+            <GoogleG />{checking ? '로그인 상태 확인 중…' : busy ? 'Google로 이동 중…' : 'Google 계정으로 로그인'}
           </button>
           {error && <p className="note error" role="alert">{error}</p>}
           <p className="fine"><LockIcon />메일 읽기 권한만 요청해요.</p>

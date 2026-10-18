@@ -9,6 +9,9 @@ export async function gmail(path, csrf) {
   return body
 }
 
+// 이미 로그인(Gmail 연결)된 세션인지. 재연결이 필요하면 로그인 안 된 것으로 봄. 서버가 꺼져 있으면 false
+export const isLoggedIn = () => gmail('/api/session').then((s) => s.authenticated && !s.needs_reconnect).catch(() => false)
+
 // 수집 메타데이터(GET /api/mails) -> 대시보드 행 모양(schema.sql 의 scans).
 // 탐지기 연동 전이라 판정·점수·근거는 비어 있음 (pending)
 export const toRow = (m) => {
