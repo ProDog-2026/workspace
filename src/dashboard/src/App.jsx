@@ -21,7 +21,7 @@ export default function App() {
   // 관리자 페이지에서 바꾼 룰·기준이 메일 검사 데모에 바로 반영되도록 여기서 들고 있음 (새로고침하면 초기화)
   const [rules, setRules] = useState(DEFAULT_RULES)
   const [thresholds, setThresholds] = useState(DEFAULT_THRESHOLDS)
-  const [email, setEmail] = useState(null)
+  const [email, setEmail] = useState(undefined)
   // 상단 연결 주소: 처음과 메뉴를 옮길 때마다 다시 읽음 (설정에서 연결·해제한 결과 반영)
   const loadEmail = () => gmail('/api/session').then((s) => setEmail(s.email)).catch(() => setEmail(null))
   useEffect(() => { loadEmail() }, [])
@@ -45,8 +45,10 @@ export default function App() {
           ))}
         </nav>
         <div className="top-right">
-          <span className="gnb-user">{email ?? 'Gmail 연결 안 됨'}</span>
-          <a className="btn" href="#/login">로그아웃</a>
+          <span className="gnb-user">{email === undefined ? '연결 확인 중' : email ?? 'Gmail 연결 안 됨'}</span>
+          {email === undefined ? null : email
+            ? <a className="btn" href="#/settings">연동 관리</a>
+            : <a className="btn" href="#/login">로그인</a>}
         </div>
       </header>
       <main className="page">

@@ -42,7 +42,7 @@ export default function Settings() {
 
   return (
     <>
-      <header className="page-head"><h1>설정<span className="tag">데모</span></h1></header>
+      <header className="page-head"><h1>설정<span className="tag">{session?.mode === 'google' ? 'Gmail 연동' : '데모'}</span></h1></header>
       <p className="note page-note">Gmail 연동 외의 값은 데모라 저장되지 않아요.</p>
 
       <section className="panel settings">
