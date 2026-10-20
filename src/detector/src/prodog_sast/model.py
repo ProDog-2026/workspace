@@ -22,6 +22,8 @@ from .data import ROW_GROUP_PREFIX, Sample
 
 # Derived from the 95th percentile of benign validation scores in the current model.
 DEFAULT_SUSPICIOUS_THRESHOLD = 0.0400186634741522
+# Operational safe gate chosen on the Quadrat-IPI Clinton development set.
+MAX_OPERATIONAL_SUSPICIOUS_THRESHOLD = 0.05
 SPLITS = ("train", "validation", "test")
 DEFAULT_BATCH_SIZE = 2048
 # The danger line must be stricter than the review budget, or it lands on the gate.
@@ -629,6 +631,13 @@ def load_artifact(path: str | Path) -> dict[str, Any]:
         raise ValueError("unsupported model artifact")
     if artifact.get("sklearn_version") not in {None, sklearn.__version__}:
         raise ValueError("model and scikit-learn versions are incompatible")
+    trained_threshold = float(
+        artifact.get("suspicious_threshold", DEFAULT_SUSPICIOUS_THRESHOLD)
+    )
+    artifact["trained_suspicious_threshold"] = trained_threshold
+    artifact["suspicious_threshold"] = min(
+        trained_threshold, MAX_OPERATIONAL_SUSPICIOUS_THRESHOLD
+    )
     return artifact
 
 

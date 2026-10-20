@@ -4,6 +4,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+import sklearn
 
 from prodog_sast.data import Sample, load_samples
 from prodog_sast.email_text import (
@@ -137,6 +138,26 @@ def test_prediction_has_three_verdict_levels_and_supports_old_artifacts() -> Non
     ]
     assert results[0]["suspicious_threshold"] == 0.040019
     assert results[0]["danger_threshold"] == 0.1
+
+
+def test_loaded_artifact_caps_the_operational_safe_gate(tmp_path) -> None:
+    path = tmp_path / "model.joblib"
+    save_artifact(
+        {
+            "format_version": 1,
+            "sklearn_version": sklearn.__version__,
+            "pipeline": FixedProbabilityPipeline(),
+            "threshold": 0.4,
+            "suspicious_threshold": 0.3,
+            "danger_threshold": 0.4,
+        },
+        path,
+    )
+
+    artifact = load_artifact(path)
+
+    assert artifact["trained_suspicious_threshold"] == 0.3
+    assert artifact["suspicious_threshold"] == 0.05
 
 
 def test_paired_dataset_is_expanded_without_user_prompt(tmp_path) -> None:
