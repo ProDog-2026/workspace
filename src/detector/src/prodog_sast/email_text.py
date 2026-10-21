@@ -71,6 +71,11 @@ def eml_bytes_to_model_text(raw: bytes) -> str:
     return message_to_model_text(message)
 
 
+def _header_value(value: str) -> str:
+    """Flatten a header value so attacker-controlled newlines cannot break storing it."""
+    return " ".join(value.replace(chr(0), " ").split())
+
+
 def fields_to_model_text(
     subject: str = "",
     body_text: str = "",
@@ -79,11 +84,11 @@ def fields_to_model_text(
     reply_to: str = "",
 ) -> str:
     message = EmailMessage()
-    message["Subject"] = subject or ""
+    message["Subject"] = _header_value(subject or "")
     if sender:
-        message["From"] = sender
+        message["From"] = _header_value(sender)
     if reply_to:
-        message["Reply-To"] = reply_to
+        message["Reply-To"] = _header_value(reply_to)
     if body_html:
         message.set_content(body_text or "")
         message.add_alternative(body_html, subtype="html")

@@ -1,0 +1,22 @@
+{
+  "output": "data\\processed\\training-corpus.jsonl",
+  "seed": 42,
+  "split_policy": "per source/group: 2/3 train, 1/6 validation, 1/6 test",
+  "injecagent": "excluded from training; reserved for external evaluation",
+  "row_order": "shuffled on disk with seed 42",
+  "samples": {
+    "bipia-emailqa:0": 38,
+    "bipia-emailqa:1": 450,
+    "cw-l-email-corpus:0": 1316,
+    "llmail-inject:0": 160,
+    "llmail-inject:1": 203150,
+    "paired-email:0": 4200,
+    "paired-email:1": 4200,
+    "phishing-curated:0": 208298
+  },
+  "exact_duplicates_removed": {
+    "cw-l-email-corpus": 113,
+    "llmail-inject": 258533,
+    "phishing-curated": 9892
+  }
+}
