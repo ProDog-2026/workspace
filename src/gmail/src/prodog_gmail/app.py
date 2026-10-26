@@ -18,6 +18,7 @@ from .demo import demo_messages
 from .errors import ConnectorError
 from .google import GoogleClient
 from .mail import mail_metadata, parse_gmail_message
+from .scan import load_detector, scan_mail
 from .store import Store
 
 COOKIE = "prodog_session"
@@ -32,6 +33,7 @@ def create_app(settings: Settings | None = None, transport=None) -> FastAPI:
         application.state.settings = config
         application.state.store = Store(config)
         application.state.rates = defaultdict(deque)
+        application.state.detector = load_detector(config.detector_model_path)
         async with httpx.AsyncClient(
             timeout=httpx.Timeout(20, connect=10),
             follow_redirects=False,
@@ -290,7 +292,11 @@ def create_app(settings: Settings | None = None, transport=None) -> FastAPI:
         async def fetch(message_id):
             async with semaphore:
                 try:
-                    return mail_metadata(await get_mail(current, message_id))
+                    parsed = await get_mail(current, message_id)
+                    return {
+                        **mail_metadata(parsed),
+                        "detection": scan_mail(application.state.detector, parsed),
+                    }
                 except ConnectorError as exc:
                     # One throttled message should not hide the rest of the inbox.
                     if exc.code not in {"mail_not_found", "message_too_large", "rate_limited"}:

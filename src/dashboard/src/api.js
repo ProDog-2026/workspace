@@ -13,8 +13,11 @@ export async function gmail(path, csrf) {
 export const isLoggedIn = () => gmail('/api/session').then((s) => s.authenticated && !s.needs_reconnect).catch(() => false)
 
 // 수집 메타데이터(GET /api/mails) -> 대시보드 행 모양(schema.sql 의 scans).
-// 탐지기 연동 전이라 판정·점수·근거는 비어 있음 (pending)
+// m.detection 은 수집 서버가 정적 탐지기를 돌린 결과. null 이면 탐지기 미설정이라 검사 전(pending).
+// 근거·LLM 점수는 아직 없음
 export const toRow = (m) => {
+  const d = m.detection
+  const scanned = d?.status === 'ok'
   const missing = [
     ...m.warnings.filter((w) => w !== 'attachment_content_not_analyzed'), // 첨부는 아래 문장으로
     ...(m.attachments.length ? [`첨부파일 ${m.attachments.length}개 (내용 검사 안 함)`] : []),
@@ -25,11 +28,12 @@ export const toRow = (m) => {
     sender: m.sender,
     subject: m.subject,
     received_at: m.received_at,
-    pending: true,
-    status: m.body_hash == null ? 'failed' : m.truncated || missing.length ? 'incomplete' : 'ok',
-    status_detail: m.body_hash == null ? '메일 본문을 가져오지 못했어요.' : null,
+    pending: !d,
+    status: m.body_hash == null || d?.status === 'failed' ? 'failed' : m.truncated || missing.length ? 'incomplete' : 'ok',
+    status_detail: m.body_hash == null ? '메일 본문을 가져오지 못했어요.' : d?.status === 'failed' ? '탐지 중 오류가 났어요.' : null,
     missing_parts: missing,
-    static_score: null, llm_score: null, final_score: null, verdict: null,
+    static_score: scanned ? d.static_score : null, llm_score: null,
+    final_score: scanned ? d.static_score : null, verdict: scanned ? d.verdict : null,
     types: [], evidence: [], llm_reason: null,
   }
 }
