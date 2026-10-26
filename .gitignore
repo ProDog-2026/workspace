@@ -24,8 +24,13 @@
 
 **/*.egg-info/
 
-# Local model weights
+# Local model weights; the two production detector artifacts are versioned.
 **/models/
+!src/detector/models/
+src/detector/models/*
+!src/detector/models/prompt_injection.joblib
+!src/detector/models/quadrat-transformer/
+!src/detector/models/quadrat-transformer/**
 
 # Regenerable external detector datasets
 src/detector/data/vendor/

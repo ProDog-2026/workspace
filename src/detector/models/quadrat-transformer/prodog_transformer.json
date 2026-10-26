@@ -1,0 +1,14 @@
+{
+  "format_version": 1,
+  "dataset": "Quadrat-IPI v1.0.2",
+  "dataset_url": "https://huggingface.co/datasets/mihailgribov/quadrat-ipi",
+  "filter": {
+    "host_type": "email"
+  },
+  "base_model": "prajjwal1/bert-tiny",
+  "window_chars": 1000,
+  "window_overlap": 500,
+  "max_length": 256,
+  "suspicious_threshold": 0.939322,
+  "danger_threshold": 0.942692
+}

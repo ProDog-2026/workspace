@@ -17,6 +17,12 @@ from .model import (
     save_artifact,
     train,
 )
+from .transformer import (
+    DEFAULT_MODEL_PATH,
+    combine_predictions,
+    load_transformer,
+    predict_transformer,
+)
 
 
 def _train(args: argparse.Namespace) -> int:
@@ -70,6 +76,18 @@ def _scan(args: argparse.Namespace) -> int:
     if not texts:
         raise ValueError("provide at least one path or --text")
     results = predict(artifact, texts)
+    transformer_path = Path(args.transformer_model)
+    if transformer_path.exists():
+        transformer = load_transformer(transformer_path)
+        results = combine_predictions(
+            results,
+            predict_transformer(transformer, texts, batch_size=args.transformer_batch_size),
+        )
+    else:
+        print(
+            f"warning: Transformer model not found at {transformer_path}; using TF model only",
+            file=sys.stderr,
+        )
     rendered = [
         {"source": name, **result}
         for name, result in zip(names, results, strict=True)
@@ -112,6 +130,8 @@ def build_parser() -> argparse.ArgumentParser:
     scan_parser.add_argument("paths", nargs="*")
     scan_parser.add_argument("--text")
     scan_parser.add_argument("--model", default="models/prompt_injection.joblib")
+    scan_parser.add_argument("--transformer-model", default=DEFAULT_MODEL_PATH)
+    scan_parser.add_argument("--transformer-batch-size", type=int, default=16)
     scan_parser.add_argument("--fail-on-detect", action="store_true")
     scan_parser.set_defaults(handler=_scan)
     return parser
