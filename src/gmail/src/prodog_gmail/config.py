@@ -22,6 +22,8 @@ class Settings(BaseSettings):
     google_client_secret: SecretStr = SecretStr("")
     token_encryption_key: SecretStr
     database_path: Path = Path("data/prodog.db")
+    # Trained model from src/detector (not in Git). Empty = no detection, mails stay "not scanned".
+    detector_model_path: Path | None = None
     session_ttl_seconds: int = Field(default=28800, ge=300, le=86400)
 
     @model_validator(mode="after")
