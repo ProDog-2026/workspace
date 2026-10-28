@@ -20,6 +20,7 @@ from .google import GoogleClient
 from .mail import mail_metadata, parse_gmail_message
 from .scan import load_detector, scan_mail
 from .store import Store
+from .supabase import Supabase
 
 COOKIE = "prodog_session"
 STATIC = Path(__file__).parent / "static"
@@ -40,6 +41,9 @@ def create_app(settings: Settings | None = None, transport=None) -> FastAPI:
             transport=transport,
         ) as client:
             application.state.google = GoogleClient(config, application.state.store, client)
+            application.state.supabase = (
+                Supabase(config, client) if config.supabase_configured else None
+            )
             yield
 
     application = FastAPI(
@@ -262,14 +266,7 @@ def create_app(settings: Settings | None = None, transport=None) -> FastAPI:
         application.state.store.save_metadata(current["account_id"], mail_metadata(parsed))
         return parsed
 
-    @application.get("/api/mails")
-    async def list_mails(
-        request: Request,
-        limit: int = Query(20, ge=1, le=50),
-        page_token: str | None = Query(None, max_length=2048),
-    ):
-        secret, current = session(request, required=True)
-        limit_requests(secret, "list", 30)
+    async def load_page(current: dict, limit: int, page_token: str | None):
         if current["mode"] == "demo":
             try:
                 start = int(page_token or "0")
@@ -322,6 +319,28 @@ def create_app(settings: Settings | None = None, transport=None) -> FastAPI:
             "result_size_estimate": estimate,
         }
 
+    @application.get("/api/mails")
+    async def list_mails(
+        request: Request,
+        limit: int = Query(20, ge=1, le=50),
+        page_token: str | None = Query(None, max_length=2048),
+    ):
+        secret, current = session(request, required=True)
+        limit_requests(secret, "list", 30)
+        return await load_page(current, limit, page_token)
+
+    @application.post("/api/sync")
+    async def sync(request: Request, limit: int = Query(20, ge=1, le=50)):
+        """Push the latest mails and their verdicts to Supabase. Explicit, so a GET never writes."""
+        secret, current = csrf(request)
+        limit_requests(secret, "sync", 10)
+        sink = application.state.supabase
+        if sink is None:
+            raise ConnectorError("supabase_not_configured", "Supabase 설정이 없습니다.", 503)
+        page = await load_page(current, limit, None)
+        saved = await sink.save_page(current["email"], page["messages"])
+        return {"saved": saved}
+
     @application.get("/api/mails/{message_id}")
     async def mail_detail(request: Request, message_id: str):
         secret, current = session(request, required=True)
@@ -334,6 +353,9 @@ def create_app(settings: Settings | None = None, transport=None) -> FastAPI:
         _, current = session(request, required=True)
         if current["mode"] == "google":
             await application.state.google.revoke(current["account_id"])
+        if application.state.supabase:
+            # Before the local wipe: if this fails the user can retry with the session intact.
+            await application.state.supabase.delete_connection(current["email"])
         application.state.store.forget_account(current["account_id"])
         response = JSONResponse({"disconnected": True})
         response.delete_cookie(COOKIE, path="/", httponly=True, samesite="lax")
