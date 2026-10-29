@@ -23,6 +23,13 @@ class Settings(BaseSettings):
     token_encryption_key: SecretStr
     database_path: Path = Path("data/prodog.db")
     session_ttl_seconds: int = Field(default=28800, ge=300, le=86400)
+    experiments_enabled: bool = True
+    sandbox_docker_context: str = Field(default="", pattern=r"^$|^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
+    ollama_model: str = ""
+    static_python: Path | None = None
+    static_model_path: Path | None = None
+    groq_api_key: SecretStr = SecretStr("")
+    openrouter_api_key: SecretStr = SecretStr("")
 
     @model_validator(mode="after")
     def validate_config(self):
@@ -42,9 +49,7 @@ class Settings(BaseSettings):
                 or url.query
                 or url.fragment
             ):
-                raise ValueError(
-                    f"This local prototype requires a loopback http {name.upper()}"
-                )
+                raise ValueError(f"This local prototype requires a loopback http {name.upper()}")
             setattr(self, name, value.rstrip("/"))
         try:
             Fernet(self.token_encryption_key.get_secret_value().encode("ascii"))

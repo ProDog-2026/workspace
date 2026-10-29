@@ -3,7 +3,6 @@ import { motion, useAnimate } from 'motion/react'
 import { ChevronRight } from 'lucide-react'
 import { clsx, type ClassValue } from 'clsx'
 import { twMerge } from 'tailwind-merge'
-import { isLoggedIn } from './api'
 import './landing.css'
 
 const cn = (...c: ClassValue[]) => twMerge(clsx(c))
@@ -139,16 +138,9 @@ function Launch({ from }: { from: Rect }) {
   )
 }
 
-export default function Landing() {
+export default function Landing({ loggedIn = false, checkingLogin = false }: { loggedIn?: boolean, checkingLogin?: boolean }) {
   const [launch, setLaunch] = useState<Rect | null>(null)
   // 로그인 상태면 '로그인' 대신 대시보드로 보냄 (다시 로그인하지 않게)
-  const [loggedIn, setLoggedIn] = useState<boolean | null>(null)
-  useEffect(() => {
-    let active = true
-    isLoggedIn().then((value) => { if (active) setLoggedIn(value) })
-    return () => { active = false }
-  }, [])
-  const checkingLogin = loggedIn === null
   const next = checkingLogin ? undefined : loggedIn ? '#/' : '#/login'
   const open = (r: Rect) => {
     if (checkingLogin) return

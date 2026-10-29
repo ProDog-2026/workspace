@@ -1,3 +1,6 @@
+import { stateOf } from './scans'
+export { stateOf } from './scans'
+
 export const STATES = {
   danger: { label: '위험' },
   suspicious: { label: '의심' },
@@ -10,12 +13,6 @@ export const STATES = {
 // 위험·의심 근거가 있으면 수집/분석이 덜 끝났어도 그 판정을 먼저 보여줌 (위험을 '확인 필요' 뒤에 숨기지 않기).
 // 판정이 비어 있으면 절대 '정상'으로 떨어뜨리지 않음.
 // pending = 수집만 됐고 탐지기를 아직 안 거침. 수집 실패는 그대로 실패로 보여줌
-export const stateOf = (r) =>
-  r.pending ? (r.status === 'failed' ? 'failed' : 'pending')
-    : r.verdict === 'danger' || r.verdict === 'suspicious' ? r.verdict
-    : r.status !== 'ok' ? r.status
-      : r.verdict ?? 'failed'
-
 // 목록 정렬: 위험 → 의심 → 수집 불완전 → 분석 실패 → 정상, 같은 상태 안에서는 최신순
 const RANK = { danger: 0, suspicious: 1, incomplete: 2, failed: 3, pending: 4, safe: 5 }
 export const bySeverity = (a, b) => RANK[stateOf(a)] - RANK[stateOf(b)] || (b.received_at ?? '').localeCompare(a.received_at ?? '')

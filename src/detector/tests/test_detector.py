@@ -1,6 +1,7 @@
 import json
 from email.message import EmailMessage
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -21,12 +22,48 @@ from prodog_sast.model import (
     save_artifact,
     train,
 )
+from prodog_sast.transformer import combine_predictions, predict_transformer, text_windows
 
 
 class FixedProbabilityPipeline:
     def predict_proba(self, texts):
         probabilities = [float(text) for text in texts]
         return np.array([[1 - value, value] for value in probabilities])
+
+
+def test_transformer_windows_cover_long_text_and_validate_overlap() -> None:
+    assert text_windows("abcdefghij", 6, 2) == ["abcdef", "efghij", "ij"]
+    with pytest.raises(ValueError):
+        text_windows("text", 4, 4)
+
+
+def test_combined_verdict_uses_the_more_severe_detector_result() -> None:
+    tfidf = [{"verdict": "safe", "prompt_injection_probability": 0.01}]
+    transformer = [{"verdict": "danger", "prompt_injection_probability": 0.8}]
+
+    result = combine_predictions(tfidf, transformer)[0]
+
+    assert result["verdict"] == "danger"
+    assert result["decided_by"] == ["transformer"]
+    assert result["detectors"] == {"tfidf": tfidf[0], "transformer": transformer[0]}
+
+
+def test_transformer_nonfinite_logits_are_an_error_not_safe() -> None:
+    torch = pytest.importorskip("torch")
+    artifact = {
+        "config": {
+            "window_chars": 1000,
+            "window_overlap": 500,
+            "max_length": 256,
+            "suspicious_threshold": 0.9,
+            "danger_threshold": 0.95,
+        },
+        "tokenizer": lambda *args, **kwargs: {},
+        "model": lambda **kwargs: SimpleNamespace(logits=torch.tensor([[float("nan"), 1.0]])),
+        "device": "cpu",
+    }
+    with pytest.raises(ValueError, match="nonfinite"):
+        predict_transformer(artifact, ["synthetic mail"])
 
 
 def test_email_serialization_keeps_raw_and_rendered_html() -> None:

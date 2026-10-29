@@ -1,0 +1,27 @@
+# No account required. The runtime creates fresh restricted containers inside this dedicated VM.
+minimumLimaVersion: 2.2.1
+base:
+  - template:docker
+vmType: vz
+cpus: 2
+memory: 2GiB
+disk: 16GiB
+mounts: []
+ssh:
+  loadDotSSHPubKeys: false
+  forwardAgent: false
+  forwardX11: false
+hostResolver:
+  enabled: false
+propagateProxyEnv: false
+vmOpts:
+  vz:
+    rosetta:
+      enabled: false
+portForwards:
+  # The base template forwards the guest Docker socket separately. No automatic TCP publication.
+  - guestPortRange: [1, 65535]
+    guestIP: 0.0.0.0
+    guestIPMustBeZero: false
+    proto: any
+    ignore: true

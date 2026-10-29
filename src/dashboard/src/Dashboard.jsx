@@ -1,6 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { gmail, toRow } from './api'
 import { TYPES } from './rules'
+import { dailyCounts, readScans, SCAN_PAGE_SIZE } from './scans'
+import { supabase } from './supabase'
 import { Mark, STATES, bySeverity, stateOf } from './ui'
 import { MailDrawer, MailTable, shortType } from './Verdict'
 
@@ -23,8 +25,14 @@ const FILTERS = {
 // ponytail: 받은편지함 최신 20건만. 메일마다 Gmail 본문 조회가 1번씩 나가서 50건이면 Gmail 초당 한도에 걸림.
 // 더 보려면 '더 불러오기'로 next_page_token 을 넘겨 다음 20건을 이어 받음
 const LIMIT = 20
+// 최대 128자 ID 50개와 쉼표 49개는 서버의 6,500자 제한 안에 들어간다.
+const POLL_BATCH_SIZE = 50
+const ACTIVE = new Set(['static_queued', 'static_running', 'dynamic_queued', 'dynamic_running'])
 
-export default function Dashboard() {
+export default function Dashboard({ user, local = false }) {
+  const title = local ? '로컬 메일 수집' : '대시보드'
+  const pageSize = local ? LIMIT : SCAN_PAGE_SIZE
+  const [reload, setReload] = useState(0)
   const [days, setDays] = useState(null) // null = 전체 기간
   const [filter, setFilter] = useState('all')
   const [selected, setSelected] = useState(null)
@@ -32,28 +40,92 @@ export default function Dashboard() {
   const [error, setError] = useState(null)
   const [next, setNext] = useState(null) // Gmail 다음 페이지 토큰. 없으면 끝
   const [more, setMore] = useState({ busy: false, error: '' })
+  const [pollError, setPollError] = useState('')
+  const lifetime = useRef(null)
+  const loadingMore = useRef(false)
 
-  const load = (token) => gmail(`/api/mails?limit=${LIMIT}` + (token ? `&page_token=${encodeURIComponent(token)}` : ''))
-    .then((d) => {
-      setScans((prev) => [...(prev ?? []), ...d.messages.map(toRow)])
-      setNext(d.next_page_token)
+  const load = async (token, signal) => {
+    if (!local) {
+      const offset = token ?? 0
+      const rows = await readScans(supabase, user?.id, offset, signal)
+      if (signal.aborted) return
+      setScans((prev) => [...new Map([...(prev ?? []), ...rows].map((r) => [r.id, r])).values()])
+      setNext(rows.length === SCAN_PAGE_SIZE ? offset + SCAN_PAGE_SIZE : null)
+      return
+    }
+    const session = await gmail('/api/session', undefined, undefined, { signal })
+    if (signal.aborted) return
+    if (!session.csrf_token) throw new Error('세션을 확인하지 못했어요. 다시 접속해 주세요.')
+    const d = await gmail(`/api/mails?limit=${LIMIT}` + (token ? `&page_token=${encodeURIComponent(token)}` : ''), session.csrf_token, undefined, { signal })
+    if (signal.aborted) return
+    setScans((prev) => {
+      const rows = new Map((prev ?? []).map((r) => [r.gmail_message_id, r]))
+      d.messages.forEach((m) => rows.set(m.id, toRow(m)))
+      return [...rows.values()]
     })
-  useEffect(() => { load().catch(setError) }, [])
-  const loadMore = () => {
+    setNext(d.next_page_token)
+  }
+  useEffect(() => {
+    const controller = new AbortController()
+    lifetime.current = controller
+    setScans(null)
+    setError(null)
+    setNext(null)
+    setSelected(null)
+    setMore({ busy: false, error: '' })
+    setPollError('')
+    load(undefined, controller.signal).catch((e) => { if (!controller.signal.aborted) setError(e) })
+    return () => controller.abort()
+  }, [local, user?.id, reload])
+
+  const messageIds = (scans ?? []).filter((r) => ACTIVE.has(r.analysis?.status)).map((r) => r.gmail_message_id).join(',')
+  const active = local && !!messageIds
+  useEffect(() => {
+    if (!active || !messageIds) return
+    const controller = new AbortController()
+    const ids = messageIds.split(',')
+    const batches = []
+    for (let i = 0; i < ids.length; i += POLL_BATCH_SIZE) batches.push(ids.slice(i, i + POLL_BATCH_SIZE).join(','))
+    let timer
+    const poll = async () => {
+      try {
+        const results = await Promise.all(batches.map((batch) => gmail(`/api/analysis?message_ids=${encodeURIComponent(batch)}`, undefined, undefined, { signal: controller.signal })))
+        if (controller.signal.aborted) return
+        const updates = new Map(results.flatMap((data) => data.analyses).map((a) => [a.gmail_message_id, a]))
+        setScans((prev) => prev?.map((r) => updates.has(r.gmail_message_id) ? toRow({ ...r.mail, analysis: updates.get(r.gmail_message_id) }) : r) ?? null)
+        setPollError('')
+      } catch (e) {
+        if (!controller.signal.aborted) setPollError(e.message)
+      }
+      if (!controller.signal.aborted) timer = setTimeout(poll, 1000)
+    }
+    timer = setTimeout(poll, 1000)
+    return () => { controller.abort(); clearTimeout(timer) }
+  }, [messageIds, active])
+
+  const loadMore = async () => {
+    if (loadingMore.current || !next) return
+    loadingMore.current = true
+    const signal = lifetime.current.signal
     setMore({ busy: true, error: '' })
-    load(next).then(() => setMore({ busy: false, error: '' }), (e) => setMore({ busy: false, error: e.message }))
+    try {
+      await load(next, signal)
+      if (!signal.aborted) setMore({ busy: false, error: '' })
+    } catch (e) {
+      if (!signal.aborted) setMore({ busy: false, error: e.message })
+    } finally { loadingMore.current = false }
   }
 
   if (error || !scans) {
     return (
       <>
-        <header className="page-head"><h1>대시보드</h1></header>
+        <header className="page-head"><h1>{title}</h1></header>
         <section className="panel"><p className="empty">
-          {!error ? '받은편지함을 불러오는 중…'
+          {!error ? '검사 결과를 불러오는 중…'
             : error.code === 'authentication_required'
               ? <>연결된 Gmail이 없어요. <a href="#/settings">설정</a>에서 Gmail을 연결하세요.</>
-              : error.message}
-        </p></section>
+              : <span role="alert">{error.message}</span>}
+        </p>{error && <div className="panel-body"><button className="btn" onClick={() => setReload((v) => v + 1)}>다시 불러오기</button></div>}</section>
       </>
     )
   }
@@ -62,7 +134,7 @@ export default function Dashboard() {
   const cur = days ? between(scans, dayStart(days - 1), dayStart(-1)) : scans
   const period = days ? `최근 ${days}일` : '전체 기간'
   // 그래프 칸 수: 전체면 가장 오래된 메일 날짜부터 오늘까지. ponytail: 막대가 너무 가늘어지지 않게 최대 90일
-  const oldest = Math.min(...scans.filter((r) => r.received_at).map((r) => new Date(r.received_at)))
+  const oldest = Math.min(Date.now(), ...scans.map((r) => Date.parse(r.received_at)).filter(Number.isFinite))
   const span = days ?? Math.min(90, Math.max(7, Math.ceil((dayStart(-1) - oldest) / 86400000)))
   const matched = cur.filter((r) => FILTERS[filter].states.includes(stateOf(r))).sort(bySeverity)
   const typeCounts = Object.keys(TYPES)
@@ -70,25 +142,15 @@ export default function Dashboard() {
     .filter((d) => d.n > 0)
     .sort((a, b) => b.n - a.n)
     .slice(0, 5)
-  const daily = Array.from({ length: span }, (_, i) => {
-    const from = dayStart(span - 1 - i)
-    const rows = between(cur, from, dayStart(span - 2 - i))
-    const last = i === span - 1
-    return {
-      key: from.toISOString(),
-      label: last ? '오늘' : `${from.getMonth() + 1}월 ${from.getDate()}일`,
-      short: last ? '오늘' : `${from.getMonth() + 1}/${from.getDate()}`,
-      danger: countOf(rows, 'danger'),
-      suspicious: countOf(rows, 'suspicious'),
-    }
-  })
-  const flaggedTotal = countOf(cur, 'danger', 'suspicious')
+  const daily = dailyCounts(cur, span)
+  const flaggedTotal = daily.reduce((n, d) => n + d.danger + d.suspicious, 0)
 
   return (
     <>
       <header className="page-head">
-        <h1>대시보드</h1>
+        <h1>{title}</h1>
         <div className="ctl-row">
+          <button className="btn" type="button" disabled={more.busy} onClick={() => setReload((v) => v + 1)}>새로고침</button>
           <span id="period-label">조회 기간</span>
           <div className="btn-group" role="group" aria-labelledby="period-label">
             {[7, 30, null].map((d) => (
@@ -97,6 +159,13 @@ export default function Dashboard() {
           </div>
         </div>
       </header>
+
+      <p className="note page-note">{local
+        ? <>이 컴퓨터의 Gmail 연결로 메일을 수집하고 정적·동적 분석해요. 결과는 로컬에 저장되며 Supabase 대시보드와 별개예요. <a href="#/settings">자동 분석 설정</a></>
+        : <>Supabase에 저장된 본인 검사 결과를 읽기 전용으로 표시해요. <a href="#/settings">Gmail 연결 관리</a> · <a href="#/mailbox">로컬 메일 수집·분석</a></>}</p>
+      <p className="note">목록·집계·그래프는 현재 불러온 {scans.length}건 기준이에요. 일별 그래프는 받은 날짜 기준 최근 {span}일을 표시해요.</p>
+      {active && <p className="note" role="status">분석 진행 상태를 1초마다 확인하고 있어요.</p>}
+      {pollError && <p className="note" role="alert">분석 상태를 갱신하지 못했어요. 기존 목록을 유지하며 다시 확인해요. {pollError}</p>}
 
       <section className="stat-strip" aria-label="판정별 메일 수">
         {STRIP.map((k) => {
@@ -126,8 +195,8 @@ export default function Dashboard() {
           <div className="panel-body">
             {typeCounts.length
               ? <TypeBars data={typeCounts} />
-              : <p className="muted">{period} 동안 찾은 숨김 수법이 없어요.</p>}
-            <p className="note hb-note">메일 1건에 수법이 여러 개일 수 있어요.</p>
+              : <p className="muted">{cur.some((r) => r.analysis?.static) ? '정적 분류기는 숨김 수법별 근거를 제공하지 않아요.' : '아직 수법별 분석 근거가 없어요.'}</p>}
+            <p className="note hb-note">수법별 근거가 제공된 경우에만 집계해요.</p>
           </div>
         </div>
       </section>
@@ -135,24 +204,24 @@ export default function Dashboard() {
       <section className="panel">
         <div className="panel-head">
           <h2>{FILTERS[filter].label} 메일<span className="count">총 <b>{matched.length}</b>건</span></h2>
-          <span className="note">받은편지함 최신 {scans.length}건 중</span>
+          <span className="note">불러온 검사 결과 {scans.length}건 중</span>
         </div>
         <MailTable
           rows={matched}
-          onSelect={setSelected}
+          onSelect={(r) => setSelected(r.id)}
           empty={filter === 'flagged' ? `${period} 동안 위험하거나 의심되는 메일이 없어요.` : '해당하는 메일이 없어요.'}
         />
         {next && (
           <div className="panel-body more">
             <button type="button" className="btn" disabled={more.busy} onClick={loadMore}>
-              {more.busy ? '불러오는 중…' : `더 불러오기 (${LIMIT}건)`}
+              {more.busy ? '불러오는 중…' : `더 불러오기 (${pageSize}건)`}
             </button>
             {more.error && <p className="note" role="alert">{more.error}</p>}
           </div>
         )}
       </section>
 
-      {selected && <MailDrawer r={selected} onClose={() => setSelected(null)} />}
+      {selected && <MailDrawer r={scans.find((r) => r.id === selected)} onClose={() => setSelected(null)} />}
     </>
   )
 }

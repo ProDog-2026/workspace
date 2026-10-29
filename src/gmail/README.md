@@ -1,5 +1,13 @@
 # ProDog Gmail 메일 연동 모듈
 
+수집 후 정적 분류와 Ollama 동적 분석을 자동으로 연결하려면
+[자동 분석 실행 안내](docs/automatic-analysis.md)를 따른다. 메일별 실행 버튼은 필요 없으며
+설정에서 모델과 자동 분석 사용을 한 번 저장한다. 실제 학습 모델은 별도 준비가 필요하다.
+
+동적 분석 실험은 기존 서버에 추가되어 있다. Docker 이미지 준비, 무료 API/Ollama 설정,
+Mac·Windows 실행 방법은 [동적 분석 실행 안내](docs/dynamic-analysis.md)를 참고한다.
+대시보드의 **동적 분석** 메뉴에서 사용하며 Gmail 연결 없이 합성 입력으로 실험할 수 있다.
+
 `메일 불러오기 · Google OAuth 연동(9/24~9/30)`의 로컬 구현이다.
 Google 계정을 연결하고 받은편지함을 조회한 뒤, 메일 본문을 후속 분석기에 넘길 수 있는 형태로 추출한다.
 탐지 결과나 차단 효과를 만들어 표시하지 않는다.
@@ -122,3 +130,8 @@ docs/          실제 계정 설정, 팀 통합 계약, 검증 기록
 ```
 
 프로젝트 방향에 대한 의견은 [설계 검토](docs/project-review.md)에 정리했다.
+# 로그인 없는 전용 분석 VM
+
+Mac에서 별도 Linux VM을 사용하는 실행·검증·중지 절차는 [docs/local-vm.md](docs/local-vm.md)에 있다.
+`uv run python scripts/setup_local_vm.py`가 공유 폴더 없는 VM을 준비하고, 실제 경계 검사 통과 후
+`SANDBOX_DOCKER_CONTEXT=prodog-vm`만 설정한다. 기존 백엔드는 사용자가 직접 재시작한다.

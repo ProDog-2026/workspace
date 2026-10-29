@@ -16,8 +16,10 @@ from fastapi.staticfiles import StaticFiles
 from .config import Settings, get_settings
 from .demo import demo_messages
 from .errors import ConnectorError
+from .experiments import Experiments, register_experiments
 from .google import GoogleClient
 from .mail import mail_metadata, parse_gmail_message
+from .pipeline import MailPipeline, register_pipeline
 from .store import Store
 
 COOKIE = "prodog_session"
@@ -38,7 +40,17 @@ def create_app(settings: Settings | None = None, transport=None) -> FastAPI:
             transport=transport,
         ) as client:
             application.state.google = GoogleClient(config, application.state.store, client)
-            yield
+            application.state.experiments = Experiments(config)
+            application.state.pipeline = MailPipeline(
+                config, application.state.store, application.state.experiments
+            )
+            await application.state.experiments.open()
+            await application.state.pipeline.open()
+            try:
+                yield
+            finally:
+                await application.state.pipeline.close()
+                await application.state.experiments.close()
 
     application = FastAPI(
         title="ProDog Gmail connector",
@@ -105,6 +117,8 @@ def create_app(settings: Settings | None = None, transport=None) -> FastAPI:
             if authenticated and config.app_mode == "google"
             else None
         )
+        if bundle and bundle.get("needs_reconnect"):
+            application.state.pipeline.cancel_account(current["account_id"])
         return {
             "authenticated": authenticated,
             "needs_reconnect": bool(bundle and bundle.get("needs_reconnect")),
@@ -156,6 +170,10 @@ def create_app(settings: Settings | None = None, transport=None) -> FastAPI:
 
     @application.exception_handler(ConnectorError)
     async def connector_error(request, exc):
+        if exc.code == "reconnect_required":
+            current = application.state.store.session(request.cookies.get(COOKIE))
+            if current and current["account_id"]:
+                application.state.pipeline.cancel_account(current["account_id"])
         return JSONResponse(
             {"error": {"code": exc.code, "message": exc.message}}, status_code=exc.status
         )
@@ -261,13 +279,18 @@ def create_app(settings: Settings | None = None, transport=None) -> FastAPI:
         return parsed
 
     @application.get("/api/mails")
+    @application.post("/api/mails")
     async def list_mails(
         request: Request,
         limit: int = Query(20, ge=1, le=50),
         page_token: str | None = Query(None, max_length=2048),
     ):
         secret, current = session(request, required=True)
+        if request.method == "POST":
+            csrf(request)
         limit_requests(secret, "list", 30)
+        if request.method == "POST":
+            await application.state.pipeline.refresh_model(current["account_id"])
         if current["mode"] == "demo":
             try:
                 start = int(page_token or "0")
@@ -290,7 +313,13 @@ def create_app(settings: Settings | None = None, transport=None) -> FastAPI:
         async def fetch(message_id):
             async with semaphore:
                 try:
-                    return mail_metadata(await get_mail(current, message_id))
+                    parsed = await get_mail(current, message_id)
+                    metadata = mail_metadata(parsed)
+                    if request.method == "POST":
+                        metadata["analysis"] = application.state.pipeline.submit(
+                            current["account_id"], parsed, secret
+                        )
+                    return metadata
                 except ConnectorError as exc:
                     # One throttled message should not hide the rest of the inbox.
                     if exc.code not in {"mail_not_found", "message_too_large", "rate_limited"}:
@@ -328,6 +357,7 @@ def create_app(settings: Settings | None = None, transport=None) -> FastAPI:
         _, current = session(request, required=True)
         if current["mode"] == "google":
             await application.state.google.revoke(current["account_id"])
+        application.state.pipeline.cancel_account(current["account_id"])
         application.state.store.forget_account(current["account_id"])
         response = JSONResponse({"disconnected": True})
         response.delete_cookie(COOKIE, path="/", httponly=True, samesite="lax")
@@ -335,12 +365,16 @@ def create_app(settings: Settings | None = None, transport=None) -> FastAPI:
 
     @application.post("/api/logout")
     async def logout(request: Request):
-        secret, _ = csrf(request)
+        secret, current = csrf(request)
+        if current and current["account_id"]:
+            application.state.pipeline.cancel_account(current["account_id"])
         application.state.store.delete_session(secret)
         response = JSONResponse({"logged_out": True})
         response.delete_cookie(COOKIE, path="/", httponly=True, samesite="lax")
         return response
 
+    register_experiments(application, csrf, session)
+    register_pipeline(application, csrf, session)
     application.mount("/static", StaticFiles(directory=STATIC), name="static")
     return application
 

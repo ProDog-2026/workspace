@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { gmail, isLoggedIn } from './api'
+import { signIn } from './auth'
+import { supabase } from './supabase'
 import { Logo } from './ui'
 
 // Google 공식 Sign-In 브랜딩의 'G' (색·모양 변경 금지)
@@ -23,36 +24,17 @@ function LockIcon() {
   )
 }
 
-export default function Login() {
-  const [checking, setChecking] = useState(true)
+export default function Login({ auth }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
-  // 이미 로그인된 상태로 이 화면에 오면 OAuth 를 다시 하지 않고 대시보드로
   useEffect(() => {
-    let active = true
-    isLoggedIn().then((ok) => {
-      if (!active) return
-      if (ok) location.hash = '#/'
-      else setChecking(false)
-    })
-    return () => { active = false }
-  }, [])
-
+    if (auth.session) location.hash = '#/settings'
+  }, [auth.session])
   const connect = async () => {
-    if (checking) return
     setBusy(true)
     setError('')
-    try {
-      // POST 직전에 받은 세션의 CSRF 토큰으로 OAuth 시작 요청을 보낸다.
-      const session = await gmail('/api/session')
-      if (session.mode !== 'google') throw new Error('Gmail 서버가 데모 모드입니다. APP_MODE=google로 바꾸고 서버를 다시 시작해 주세요.')
-      if (!session.configured) throw new Error('Google OAuth 설정이 필요합니다. Gmail 서버의 환경변수를 확인해 주세요.')
-      const { authorization_url } = await gmail('/api/oauth/google/start', session.csrf_token)
-      location.assign(authorization_url)
-    } catch (e) {
-      setError(e.message)
-      setBusy(false)
-    }
+    try { await signIn() }
+    catch (e) { setError(e.message); setBusy(false) }
   }
 
   return (
@@ -61,13 +43,14 @@ export default function Login() {
         <a className="login-logo" href="#/intro"><Logo size={28} />ProDog</a>
         <div className="login-box">
           <h1>로그인</h1>
-          <p className="login-sub">Google 계정으로 로그인하면 Gmail 받은편지함을 검사해요.</p>
-          <button type="button" className="gbtn" disabled={checking || busy} onClick={connect}>
-            <GoogleG />{checking ? '로그인 상태 확인 중…' : busy ? 'Google로 이동 중…' : 'Google 계정으로 로그인'}
+          <p className="login-sub">Google 계정으로 ProDog에 로그인하고 본인 검사 결과를 확인하세요. 로그인 후 Gmail 읽기 권한을 별도로 연결해요.</p>
+          <button type="button" className="gbtn" disabled={auth.loading || busy || !supabase} onClick={connect}>
+            <GoogleG />{auth.loading ? '로그인 상태 확인 중…' : busy ? 'Google로 이동 중…' : 'Google 계정으로 로그인'}
           </button>
-          {error && <p className="note error" role="alert">{error}</p>}
-          <p className="fine"><LockIcon />메일 읽기 권한만 요청해요.</p>
+          {(error || auth.error) && <p className="note error" role="alert">{error || auth.error}</p>}
+          <p className="fine"><LockIcon />앱 로그인과 Gmail 읽기 권한은 별도로 관리해요.</p>
         </div>
+        <p className="fine"><a href="#/mailbox">기존 로컬 메일 수집·실험으로 이동</a></p>
         <p className="copy"><span>이용약관</span><b>개인정보처리방침</b><span>© 2026 ProDog 캡스톤 팀</span></p>
       </div>
     </main>
