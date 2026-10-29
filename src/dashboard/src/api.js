@@ -23,7 +23,12 @@ const thresholdsOf = (r) => Number.isFinite(r.suspicious_threshold) && Number.is
 // 수집 상태와 정적 판정은 유지하고 동적 실행 상태는 별도로 표시한다.
 export const toRow = (m) => {
   const analysis = m.analysis ?? m.metadata?.analysis ?? null
-  const result = analysis?.static
+  const detection = m.detection
+  const result = analysis ? analysis.static : detection ? {
+    ...detection,
+    status: detection.status === 'ok' ? 'completed' : 'error',
+    score: Number.isFinite(detection.static_score) ? detection.static_score / 100 : null,
+  } : null
   const staticFailed = analysis?.status === 'static_error' || ['error', 'failed'].includes(result?.status) || !!result?.error
   const completed = !staticFailed && result?.status === 'completed' && ['safe', 'suspicious', 'danger'].includes(result.verdict)
   const failed = staticFailed || (!completed && ['error', 'cancelled'].includes(analysis?.status))

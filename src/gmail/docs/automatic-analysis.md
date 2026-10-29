@@ -9,7 +9,9 @@
 ## 최초 준비
 
 1. 팀의 `feature/31-transformer-ensemble`에서 가져온 실제 가중치를 사용한다.
-   `src/detector/models/prompt_injection.joblib`과 `models/quadrat-transformer/`가 포함된다.
+   `src/detector/models/prompt_injection.joblib`과 `models/quadrat-transformer/`를
+   [팀 모델 공유 페이지](https://app.notion.com/p/40714dd1c3c48153b351f8fd6c01855d)에서 받아 배치한다.
+   로컬 파일은 유지하지만 최신 develop 정책에 따라 Git에서는 제외한다.
    가져온 팀 커밋은 `3e8968e`다. joblib은 Python 객체를 로드하므로 출처를 모르는 파일은
    사용하지 않는다. 임의 샘플 모델로 대체하지 않는다.
 2. 정적 탐지기 전용 Python 3.12 환경을 준비한다. Gmail의 Python 3.14 환경과 분리한다.
@@ -35,7 +37,7 @@ STATIC_MODEL_PATH=../detector/models/prompt_injection.joblib
 4. 기존 Gmail 백엔드를 재시작하고 대시보드의 설정에서 Gmail을 연결한다.
 5. **자동 분석 → Ollama 모델 선택 → 자동 분석 사용 → 설정 저장**을 한 번 수행한다.
    모델의 도구 지원은 저장 시 `/api/show`로 확인한다. 정적 준비 상태도 같은 화면에 표시된다.
-6. 대시보드로 이동한다. 수집된 메일의 정적 분류와 조건에 맞는 동적 분석이 자동 진행된다.
+6. **로컬 수집** 화면으로 이동한다. 수집된 메일의 정적 분류와 조건에 맞는 동적 분석이 자동 진행된다.
 
 ## 동작
 
@@ -103,6 +105,9 @@ Transformer는 로컬 가중치만 읽고 모델 다운로드·외부 API를 호
 ## 데이터와 접근
 
 자동 설정·분류 결과·대기 상태는 기존 로컬 SQLite의 계정별 테이블에 저장한다.
+develop의 명시적 POST `/api/sync`는 기존 `DETECTOR_MODEL_PATH` 탐지와 Supabase 저장 계약을
+유지하지만 동적 분석을 등록하지 않는다. `SUPABASE_USER_ID` 고정 테스트 사용자용 데모이며,
+자동 분석 결과의 Supabase 저장이나 실제 로그인 사용자 연결을 구현한 것은 아니다.
 정적 대기 중의 본문은 기존 암호화 키로 암호화하고 분석 완료/등록 후 임시 입력을 비운다.
 새 동적 실행 기록 파일도 암호화한다. 계정별 실험 결과는 로그인한 계정에서만 조회할 수 있다.
 이전 버전의 평문 수동 실험 파일은 읽기 호환만 유지하며 자동 변환하거나 삭제하지 않는다.

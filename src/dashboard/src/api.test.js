@@ -11,6 +11,22 @@ const result = {
 }
 const rowOf = (value = result, status = 'completed') => toRow({ ...mail, analysis: { status, static: value } })
 
+test('develop detection results remain visible without replacing pipeline results', () => {
+  const detection = { status: 'ok', verdict: 'danger', static_score: 90 }
+  const legacy = toRow({ ...mail, detection })
+  assert.equal(legacy.pending, false)
+  assert.equal(legacy.verdict, 'danger')
+  assert.equal(legacy.final_score, 90)
+  assert.equal(legacy.static_thresholds, null)
+  assert.equal(toRow({ ...mail, detection: { status: 'failed' } }).status, 'failed')
+  const queued = toRow({ ...mail, detection, analysis: { status: 'static_queued' } })
+  assert.equal(queued.pending, true)
+  assert.equal(queued.verdict, null)
+  const current = toRow({ ...mail, detection, analysis: { status: 'completed', static: { status: 'completed', ...tfidf } } })
+  assert.equal(current.verdict, 'suspicious')
+  assert.equal(current.final_score, 90)
+})
+
 test('ensemble preserves the deciding detector score, even when another score is higher', () => {
   const row = rowOf()
   assert.equal(row.verdict, 'danger')

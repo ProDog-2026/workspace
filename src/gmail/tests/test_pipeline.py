@@ -17,6 +17,18 @@ from prodog_gmail.pipeline import MailPipeline
 BASE = "http://127.0.0.1:8765"
 
 
+def test_post_collection_does_not_run_legacy_detector_twice(configured, monkeypatch):
+    client, calls = configured
+
+    def legacy_scan(*_):
+        pytest.fail("POST collection must use only the queued static detector")
+
+    monkeypatch.setattr("prodog_gmail.app.scan_mail", legacy_scan)
+    assert post(client, "/api/mails?limit=3").status_code == 200
+    wait_results(client)
+    assert len(calls["static"]) == 3 and len(calls["dynamic"]) == 1
+
+
 def test_new_vm_target_creates_new_analysis_for_same_mail(configured):
     client, _calls = configured
     first = post(client, "/api/mails?limit=1").json()["messages"][0]["analysis"]["id"]

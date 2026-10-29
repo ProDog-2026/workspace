@@ -22,7 +22,7 @@
 
 ## 모델과 중복 방지
 
-팀 ML·Transformer 가중치는 models/에 포함한다. 기본 팀 모델의 Transformer가 없거나
+팀 ML·Transformer 가중치는 별도 공유 파일을 models/에 배치하며 Git에서는 제외한다. 기본 팀 모델의 Transformer가 없거나
 일부 파일이 누락되면 준비 실패로 남기며 safe로 통과시키지 않는다. 명시적 외부 단일 ML
 아티팩트는 기존 호환 용도로만 지원한다. 가중치·설정·토크나이저 전체를 정적 모델 식별자에 포함한다.
 
@@ -48,8 +48,9 @@ Ollama 모델 정보를 갱신하고, 실행 직전에도 저장한 모델 정�
 설치된 qwen3:4b의 추론 전용 제약을 확인하고 qwen3:4b-instruct로 합성 메일 전체 흐름을 검증했다.
 정상 샘플의 정적 오탐도 관찰했으므로 기능 연결 검증을 탐지 정확도 평가로 해석하지 않는다.
 
-현재 작업 브랜치는 feature/dynamic-analysis이며 미커밋 상태다. 원격 develop은 a831af3까지
-조회했다. 다른 팀원의 Gmail/Supabase 변경을 이번 작업에 일괄 병합하지 않았다.
+`feat/jihun`에서 develop의 수집·탐지·Supabase 어댑터와 통합했다. POST `/api/mails`는
+자동 분석 대기열을 사용하고 GET 조회와 명시적 POST `/api/sync`는 기존 탐지 계약을 유지한다.
+`/api/sync`는 동적 분석을 등록하지 않으며 고정 테스트 사용자 설정을 쓰는 데모 어댑터다.
 # 전용 VM 실행 대상 (2026-10-29 추가)
 
 현재 Mac에서는 로그인 없는 Lima/VZ `prodog-lab` VM 안에 독립 rootless Docker 엔진을 두고,

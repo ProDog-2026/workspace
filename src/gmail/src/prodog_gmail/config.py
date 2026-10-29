@@ -22,6 +22,13 @@ class Settings(BaseSettings):
     google_client_secret: SecretStr = SecretStr("")
     token_encryption_key: SecretStr
     database_path: Path = Path("data/prodog.db")
+    # Trained model from src/detector (not in Git). Empty = no detection, mails stay "not scanned".
+    detector_model_path: Path | None = None
+    # Server-side writes only. service_role bypasses RLS, so this key never reaches the browser.
+    supabase_url: str = ""
+    supabase_service_key: SecretStr = SecretStr("")
+    # Demo stage: every connection is filed under one test user until Supabase Auth is wired (#6).
+    supabase_user_id: str = ""
     session_ttl_seconds: int = Field(default=28800, ge=300, le=86400)
     experiments_enabled: bool = True
     sandbox_docker_context: str = Field(default="", pattern=r"^$|^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
@@ -56,6 +63,14 @@ class Settings(BaseSettings):
         except (ValueError, UnicodeError) as exc:
             raise ValueError("Set TOKEN_ENCRYPTION_KEY using scripts/setup_local.py") from exc
         return self
+
+    @property
+    def supabase_configured(self) -> bool:
+        return bool(
+            self.supabase_url
+            and self.supabase_service_key.get_secret_value()
+            and self.supabase_user_id
+        )
 
     @property
     def google_configured(self) -> bool:
