@@ -1,6 +1,6 @@
 # 모듈 연동 구조와 진행 단계
 
-Gmail 수집(심재훈), 탐지 모델(윤주혁·박한빈), Supabase 저장(김서진), 대시보드(이지훈)를 한 페이지로 묶는 작업의 기준 문서다. 2026-10-26 `develop`(`b784f78`) 기준이다.
+Gmail 수집(심재훈), 탐지 모델(윤주혁), 문맥 분석(박한빈·이지훈), Supabase 저장(김서진), 대시보드(이지훈)를 한 페이지로 묶는 작업의 기준 문서다. 2026-10-29 `develop`(`a831af3`) 기준이다.
 
 ## 지금 연결된 것
 
@@ -8,9 +8,9 @@ Gmail 수집(심재훈), 탐지 모델(윤주혁·박한빈), Supabase 저장(�
 | --- | --- | --- |
 | 대시보드 → Gmail 수집 모듈 | 연결됨 (#11, PR #16) | `src/dashboard/vite.config.js`, `src/dashboard/src/api.js` |
 | Gmail OAuth (실제 계정) | 연결됨. OAuth 앱이 테스트 모드라 등록한 테스트 사용자만 로그인 | `src/gmail/src/prodog_gmail/google.py` |
-| Gmail 수집 → 탐지 모델 | 미연결. 변환 함수는 있음 | `src/detector/src/prodog_sast/email_text.py` `collect_api_to_model_text()` |
-| 수집·탐지 결과 → Supabase | 미연결 (#12, #13) | 없음 |
-| Supabase → 대시보드 | 미연결 (#14) | 없음 |
+| Gmail 수집 → 탐지 모델 | 연결됨 (#29, PR #30) | `src/gmail/src/prodog_gmail/scan.py` |
+| 수집·탐지 결과 → Supabase | 어댑터 구현 (#13, PR #32). 테스트 사용자 1명 고정 | `src/gmail/src/prodog_gmail/supabase.py` |
+| Supabase → 대시보드 | 미연결 (#14, #38) | 없음 |
 | 로그인 (Supabase Auth) | 미연결. 로그인 버튼은 Gmail OAuth 시작에 연결됨(#18) | `src/dashboard/src/Login.jsx` |
 
 대시보드는 Supabase 대신 Gmail 수집 모듈을 직접 읽는다. 탐지 결과가 없어서 모든 메일이 `검사 전` 상태로 보인다.
@@ -49,18 +49,18 @@ flowchart LR
 | 순서 | 이슈 | 담당 | 내용 | 선행 |
 | --- | --- | --- | --- | --- |
 | 1 | #11 (완료) | 심재훈 | 대시보드에서 Gmail 수집 모듈 호출 | 없음 |
-| 2 | #12 | 김서진 | `scans`를 테이블로 둘지 뷰로 둘지 정하고 적용 SQL 커밋 | 없음 |
-| 3 | 새 이슈 필요 | 윤주혁·심재훈 | 수집 모듈에서 탐지 모델 호출, 결과를 대시보드 행 모양으로 변환 | PR #10 머지됨 |
-| 4 | #13 | 심재훈 | 수집·탐지 결과를 Supabase `mail_messages`, `analysis_results`에 저장 | 2, 3 |
-| 5 | #14 | 이지훈 | 대시보드가 Supabase `scans`를 읽도록 교체 | 2, 4 |
-| 6 | 새 이슈 필요 | TBD | Supabase Auth 로그인과 Gmail 연결을 같은 `user_id`에 묶기 | 4 |
+| 2 | #12 (닫힘, SQL 미반영은 #37) | 김서진 | `scans`를 테이블로 둘지 뷰로 둘지 정하고 적용 SQL 커밋 | 없음 |
+| 3 | #29 (완료) | 심재훈 | 수집 모듈에서 탐지 모델 호출, 결과를 대시보드 행 모양으로 변환 | PR #10 머지됨 |
+| 4 | #13 (완료) | 심재훈 | 수집·탐지 결과를 Supabase `mail_messages`, `analysis_results`에 저장 | 2, 3 |
+| 5 | #14, #38 | 이지훈 | 대시보드가 Supabase `scans`를 읽도록 교체 | 2, 4 |
+| 6 | #37, #34 | 김서진·심재훈 | Supabase Auth 로그인과 Gmail 연결을 같은 `user_id`에 묶기 | 4 |
 
 ## 정해야 할 것
 
 1. **`scans`의 형태.** `src/dashboard/schema.sql`은 테이블로, `arch/SUPABASE_TABLE.md`는 뷰로 정의한다. 문서가 링크한 `supabase-gmail-schema.sql`은 레포에 없다. (#12)
 2. **판정 값 변환.** 탐지 모델은 `prompt_injection_probability`(0~1)와 `safe|suspicious|danger`를 낸다(#19, 의심 0.05, 위험 0.414419). 대시보드와 Supabase는 0~100 점수를 쓴다. 확률을 점수로 바꾸는 환산식이 없다.
 3. **정적 점수의 출처.** 대시보드 `rules.js`(R01~R07)는 규칙 기반이고 탐지 모델 README는 "수작업 룰은 점수에 쓰지 않는다"고 한다. `static_score`를 어느 쪽이 채울지 정한다.
-4. **로컬 LLM 단계.** 박한빈이 비교 중인 `qwen3.5:9b`, `Foundation-Sec-8B`, Jev 중 무엇을 `llm_score`에 쓸지, ML 모델 뒤 2차 판단으로 붙일지 정한다. (#5)
+4. **로컬 LLM 단계.** 박한빈·이지훈이 `qwen3.5:9b`, `Foundation-Sec-8B`, Jev 중 무엇을 `llm_score`에 쓸지, ML 모델 뒤 2차 판단으로 붙일지 정한다. (#5 완료, #36)
 5. **서버 코드 위치.** 3~4단계를 `src/gmail`에 계속 붙일지, 수집·탐지·저장을 조율하는 `src/server`를 새로 만들지 정한다. 처음에는 `src/gmail`에 붙이고, 파일이 커지거나 담당자가 갈리면 나누는 순서를 제안한다.
 
 ## 로컬 실행
