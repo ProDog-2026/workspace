@@ -25,8 +25,9 @@ Quadrat의 `clean`과 `injected`는 원래 학습/시험 분할이 아니라 서
 데이터에서 나온 값이므로 독립 외부 성능으로 해석하면 안 된다.
 
 원본 데이터는 `src/detector/data/vendor/quadrat-ipi-v1.0.2/`, 학습 가중치는
-`src/detector/models/quadrat-transformer/`에 저장한다. 원본 데이터는 Git에서 제외하고 운영
-가중치는 저장소에 포함한다.
+`src/detector/models/quadrat-transformer/`에 저장한다. 원본 데이터와 운영 가중치는 모두
+Git에서 제외한다. 운영 가중치는
+[Notion 모델 파일 페이지](https://app.notion.com/p/40714dd1c3c48153b351f8fd6c01855d)에서 내려받는다.
 
 ## 모델과 입력 처리
 

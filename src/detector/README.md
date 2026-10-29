@@ -82,8 +82,9 @@ python scripts/train_quadrat_transformer.py
 ```
 
 가중치는 `models/quadrat-transformer/`, 검증 결과는
-`reports/quadrat-transformer-metrics.json`에 생성된다. 운영에 사용하는 이 가중치는 Git에
-포함하며, 재학습 중간 산출물과 백업 모델은 제외한다.
+`reports/quadrat-transformer-metrics.json`에 생성된다. 운영 가중치는 Git에 포함하지 않으며,
+[Notion 모델 파일 페이지](https://app.notion.com/p/40714dd1c3c48153b351f8fd6c01855d)에서 내려받아
+위 경로에 배치한다.
 
 ## 현재 로컬 모델
 
@@ -117,8 +118,9 @@ python scripts/train_quadrat_transformer.py
 | 내부 test 중 BIPIA(홀드아웃 공격 문구 25종) | 34.7% (26/75) |
 | InjecAgent Gmail(최종 외부 테스트) | 15.3% (19/124) |
 
-운영 모델은 재현 가능한 실행을 위해 Git에 포함한다. 원본·가공 데이터와 재학습 중간 산출물은
-올리지 않으며, 평가 결과는 `reports/`와 위 데이터셋 문서에 기록한다.
+모델과 대용량 데이터는 Git에 올리지 않는다. 운영 모델은
+[Notion 모델 파일 페이지](https://app.notion.com/p/40714dd1c3c48153b351f8fd6c01855d)에서 내려받고,
+추적 가능한 평가 결과는 `reports/`와 위 데이터셋 문서에 기록한다.
 
 ## 데이터 준비
 
