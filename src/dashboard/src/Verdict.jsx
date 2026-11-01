@@ -73,6 +73,34 @@ export function shortReason(r) {
   return '문맥 분석으로만 탐지'
 }
 
+export function AutomaticAnalysis({ rows, onSelect }) {
+  const flagged = rows.filter((row) => ['suspicious', 'danger'].includes(row.verdict))
+  return <section className="panel" aria-labelledby="automatic-analysis-heading">
+    <div className="panel-head"><h2 id="automatic-analysis-heading">수집 메일 자동 동적 분석<span className="count">의심·위험 <b>{flagged.length}</b>건</span></h2><a className="btn" href="#/settings">자동 분석 설정</a></div>
+    <p className="panel-body note">자동 분석을 켜면 의심·위험 메일을 로컬 AI로 분석하고, 명령은 격리 환경에서 실행해요.</p>
+    {!flagged.length ? <p className="empty">현재 불러온 메일에 의심·위험 판정이 없어요.</p>
+      : <div className="table-scroll"><table className="wrap automatic-analysis-table">
+        <thead><tr><th scope="col">메일</th><th scope="col">정적 판정</th><th scope="col">동적 분석</th><th scope="col">실행 모델</th><th scope="col">가짜 토큰</th><th scope="col">결과</th></tr></thead>
+        <tbody>{flagged.map((row) => {
+          const analysis = row.analysis, dynamic = analysis?.dynamic
+          const exposure = dynamic?.observations?.canary_leaked
+          const status = dynamic ? DYNAMIC_STATUS[dynamic.status] ?? dynamic.status
+            : analysis?.status === 'skipped' ? '동적 분석 생략'
+              : ['static_queued', 'static_running', 'dynamic_queued', 'dynamic_running', 'error', 'static_error', 'cancelled'].includes(analysis?.status) ? pipelineStatus(analysis) : '실행 기록 없음'
+          return <tr key={row.id}>
+            <td><button type="button" className="subj" onClick={() => onSelect(row)}>{row.subject || '(제목 없음)'}</button></td>
+            <td><Badge v={row.verdict} /></td>
+            <td>{status}{(dynamic?.error || analysis?.error) && <p className="note">{(dynamic?.error || analysis?.error).message}</p>}</td>
+            <td>{dynamic?.model || analysis?.config?.model || '미기록'}</td>
+            <td>{exposure === true ? '노출 관측' : exposure === false ? '관측 안 됨' : '미확인'}</td>
+            <td>{dynamic?.id ? <a href={`#/experiment?run=${encodeURIComponent(dynamic.id)}`}>실행 기록</a> : '—'}</td>
+          </tr>
+        })}</tbody>
+      </table></div>}
+    {flagged.length > 0 && <p className="panel-body note">명령·AI 응답 상세는 분석을 실행한 PC의 실행 기록에서 확인해요. 동적 분석 결과가 정적 위험 판정을 낮추지는 않아요.</p>}
+  </section>
+}
+
 export function MailTable({ rows, onSelect, empty = '해당하는 메일이 없어요.' }) {
   if (!rows.length) return <p className="empty">{empty}</p>
   return (

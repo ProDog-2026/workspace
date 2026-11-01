@@ -241,6 +241,7 @@ export default function Experiment() {
   const summary = observations?.files?.find((file) => file.path === '/workspace/summary.txt')
   const response = shown?.events?.filter((event) => event.type === 'model' && typeof event.data?.message?.content === 'string' && event.data.message.content.trim()).at(-1)?.data.message.content
   const answer = summary?.preview?.trim() || response
+  const automaticRuns = (runs ?? []).filter((item) => item.source?.kind === 'mail_pipeline')
 
   return (
     <div className="experiment">
@@ -254,6 +255,7 @@ export default function Experiment() {
           {errors.detail && <p className="error" role="alert">{errors.detail}</p>}
           {errors.action && <p className="error" role="alert">{errors.action}</p>}
           {!shown ? <p className="muted" role="status">{errors.detail ? '상세 기록을 불러오지 못했어요.' : '선택한 실행을 불러오는 중…'}</p> : <>
+            {shown.source?.kind === 'mail_pipeline' && <h3 className="mail-test-subject">{shown.subject || '(제목 없음)'}</h3>}
             <p role="status"><strong>{STATUS[shown.status] || shown.status}</strong> · {date(shown.created_at)}</p>
             {shown.error && <p className="error" role="alert">{shown.error.message}</p>}
             <div className="mail-test-answer"><h3>{summary?.preview?.trim() ? 'AI 요약 · 저장 내용 미리보기' : 'AI 응답'}</h3>
@@ -287,7 +289,20 @@ export default function Experiment() {
           </>}
         </div>
       </section>}
+      <section className="panel" aria-labelledby="automatic-history">
+        <div className="panel-head"><h2 id="automatic-history">수집 메일 자동 분석</h2><span className="note">{automaticRuns.length}건</span></div>
+        <div className="panel-body">
+          <div className="experiment-actions"><a className="btn" href="#/">대시보드에서 메일별 결과 보기</a><a className="btn" href="#/mailbox">로컬 수집</a><a className="btn" href="#/settings">자동 분석 설정</a></div>
+          {errors.history && <p className="error" role="alert">{errors.history}</p>}
+          {!runs ? <p className="muted">{errors.history ? '새로고침으로 다시 조회해 주세요.' : '자동 분석 기록을 불러오는 중…'}</p>
+            : !automaticRuns.length ? <p className="muted">자동 분석 기록이 없어요. 자동 분석을 켜고 메일을 수집하면 의심·위험 메일이 여기에 표시돼요.</p>
+              : <ul className="experiment-history">{automaticRuns.map((item) => <li key={item.id}><button type="button" disabled={busy} aria-pressed={item.id === id} onClick={() => { select(item.id); setReload((n) => n + 1) }}>
+                <strong>{item.subject || '(제목 없음)'}</strong><span>{item.model || '모델 미기록'} · {STATUS[item.status] || item.status}</span><small>{date(item.created_at)}</small>
+              </button></li>)}</ul>}
+        </div>
+      </section>
       <section className="panel" aria-labelledby="mail-test-heading">
+        <div className="panel-head"><h2>메일 직접 테스트</h2></div>
         <div className="panel-body">
           <form className="mail-test-form" onSubmit={submit}>
             <div className="mail-test-heading"><label id="mail-test-heading" htmlFor="mail-test-mail">어떤 메일을 테스트할까요?</label>
@@ -329,7 +344,7 @@ export default function Experiment() {
           {!runs ? <p className="muted">{errors.history ? '새로고침으로 다시 조회해 주세요.' : '기록을 불러오는 중…'}</p>
             : !runs.length ? <p className="muted">아직 실행 기록이 없어요.</p>
               : <ul className="experiment-history">{runs.map((item) => <li key={item.id}><button type="button" disabled={busy} aria-pressed={item.id === id} onClick={() => { select(item.id); setReload((n) => n + 1) }}>
-                <span>{sourceName(item)}</span><strong>{STATUS[item.status] || item.status}</strong><small>{date(item.created_at)}</small>
+                <strong>{item.source?.kind === 'mail_pipeline' ? item.subject || '(제목 없음)' : sourceName(item)}</strong><span>{item.model || '모델 미기록'} · {STATUS[item.status] || item.status}</span><small>{date(item.created_at)}</small>
               </button></li>)}</ul>}
         </div>
       </section>}</div>

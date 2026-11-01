@@ -24,6 +24,7 @@
 .experiment-history button { display: grid; gap: 4px; text-align: left; width: 100%; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--r-ctl); padding: 10px 12px; overflow-wrap: anywhere; }
 .experiment-history button[aria-pressed='true'] { border-color: var(--accent); background: var(--accent-soft); }
 .experiment-history small { color: var(--muted); }
+.mail-test-subject { overflow-wrap: anywhere; }
 .experiment-observations { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .experiment-observations > div { display: grid; gap: 6px; background: var(--surface-2); padding: 14px; border: 1px solid var(--border); border-radius: var(--r-box); }
 .experiment-observations span { color: var(--ink-2); font-size: 12px; }

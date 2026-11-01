@@ -2,9 +2,38 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { MailTable, VerdictDetail } from './Verdict'
+import * as Verdict from './Verdict'
 import { scanRow } from './scans'
 
 const row = (extra = {}) => scanRow({ id: 'synthetic', gmail_message_id: 'synthetic', user_id: 'synthetic-user', subject: '합성 검증 메일', sender: 'test@example.invalid', received_at: '2026-10-29T00:00:00Z', status: 'ok', verdict: 'safe', final_score: 13, ...extra })
+
+test('automatic analysis shows flagged mail, model and observations without hiding static verdict', () => {
+  const markup = renderToStaticMarkup(<Verdict.AutomaticAnalysis rows={[
+    row({ subject: '<script>synthetic</script>', verdict: 'danger', analysis: { status: 'error', dynamic: {
+      id: 'run-a', provider: 'ollama', model: 'synthetic-local', status: 'timeout',
+      observations: { canary_leaked: null },
+    } } }),
+    row({ id: 'normal', subject: 'normal-mail-excluded', verdict: 'safe' }),
+  ]} onSelect={() => {}} />)
+  assert.match(markup, /수집 메일 자동 동적 분석/)
+  assert.match(markup, /위험/)
+  assert.match(markup, /synthetic-local/)
+  assert.match(markup, /시간 초과/)
+  assert.match(markup, /미확인/)
+  assert.match(markup, /#\/experiment\?run=run-a/)
+  assert.match(markup, /&lt;script&gt;synthetic&lt;\/script&gt;/)
+  assert.doesNotMatch(markup, /normal-mail-excluded|<script>/)
+})
+
+test('automatic analysis distinguishes skipped, not yet registered and unavailable models', () => {
+  const markup = renderToStaticMarkup(<Verdict.AutomaticAnalysis rows={[
+    row({ verdict: 'suspicious', analysis: { status: 'skipped' } }),
+    row({ id: 'old', verdict: 'danger', analysis: null }),
+  ]} onSelect={() => {}} />)
+  assert.match(markup, /동적 분석 생략/)
+  assert.match(markup, /실행 기록 없음/)
+  assert.match(markup, /미기록/)
+})
 test('stored pipeline detail uses the original score for its label and threshold meter', () => {
   const r = row({ verdict: 'danger', static_score: 94, final_score: 94, analysis: { static: {
     status: 'completed', verdict: 'danger', score: 0.943566, mode: 'ensemble',

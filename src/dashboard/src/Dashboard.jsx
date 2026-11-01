@@ -4,7 +4,7 @@ import { TYPES } from './rules'
 import { dailyCounts, readScans, SCAN_PAGE_SIZE } from './scans'
 import { supabase } from './supabase'
 import { Mark, STATES, bySeverity, stateOf } from './ui'
-import { MailDrawer, MailTable, shortType } from './Verdict'
+import { AutomaticAnalysis, MailDrawer, MailTable, shortType } from './Verdict'
 
 const dayStart = (daysAgo) => {
   const d = new Date()
@@ -45,8 +45,10 @@ export default function Dashboard({ user, local = false }) {
   const [cloud, setCloud] = useState(null)
   const lifetime = useRef(null)
   const loadingMore = useRef(false)
+  const listRevision = useRef(0)
 
   const load = async (token, signal) => {
+    listRevision.current++
     if (!local) {
       const offset = token ?? 0
       const rows = await readScans(supabase, user?.id, offset, signal)
@@ -93,7 +95,8 @@ export default function Dashboard({ user, local = false }) {
   }, [local, user?.id, reload])
 
   const messageIds = (scans ?? []).filter((r) => ACTIVE.has(r.analysis?.status)).map((r) => r.gmail_message_id).join(',')
-  const active = local && (!!messageIds || (scans !== null && cloud === null) || (cloud?.configured && (cloud.pending == null || cloud.pending > 0 || !!cloud.error)))
+  const pageCount = Math.max(1, Math.ceil((scans?.length ?? 0) / SCAN_PAGE_SIZE))
+  const active = local ? (!!messageIds || (scans !== null && cloud === null) || (cloud?.configured && (cloud.pending == null || cloud.pending > 0 || !!cloud.error))) : scans !== null && !!user?.id
   useEffect(() => {
     if (!active) return
     const controller = new AbortController()
@@ -102,22 +105,38 @@ export default function Dashboard({ user, local = false }) {
     for (let i = 0; i < ids.length; i += POLL_BATCH_SIZE) batches.push(ids.slice(i, i + POLL_BATCH_SIZE).join(','))
     if (!batches.length) batches.push('')
     let timer
+    const interval = local ? 1000 : 5000
     const poll = async () => {
       try {
-        const results = await Promise.all(batches.map((batch) => gmail(`/api/analysis?message_ids=${encodeURIComponent(batch)}`, undefined, undefined, { signal: controller.signal })))
-        if (controller.signal.aborted) return
-        setCloud(results[0].cloud)
-        const updates = new Map(results.flatMap((data) => data.analyses).map((a) => [a.gmail_message_id, a]))
-        setScans((prev) => prev?.map((r) => updates.has(r.gmail_message_id) ? toRow({ ...r.mail, analysis: updates.get(r.gmail_message_id) }) : r) ?? null)
-        setPollError('')
+        if (!local) {
+          const revision = listRevision.current
+          if (!loadingMore.current) {
+            const pages = await Promise.all(Array.from({ length: pageCount }, (_, index) => readScans(supabase, user.id, index * SCAN_PAGE_SIZE, controller.signal)))
+            if (controller.signal.aborted) return
+            if (revision === listRevision.current && !loadingMore.current) {
+              const rows = [...new Map(pages.flat().map((row) => [row.id, row])).values()]
+              setScans(rows)
+              setNext(pages.at(-1).length === SCAN_PAGE_SIZE ? pageCount * SCAN_PAGE_SIZE : null)
+              setSelected((previous) => rows.some((row) => row.id === previous) ? previous : null)
+            }
+          }
+          setPollError('')
+        } else {
+          const results = await Promise.all(batches.map((batch) => gmail(`/api/analysis?message_ids=${encodeURIComponent(batch)}`, undefined, undefined, { signal: controller.signal })))
+          if (controller.signal.aborted) return
+          setCloud(results[0].cloud)
+          const updates = new Map(results.flatMap((data) => data.analyses).map((a) => [a.gmail_message_id, a]))
+          setScans((prev) => prev?.map((r) => updates.has(r.gmail_message_id) ? toRow({ ...r.mail, analysis: updates.get(r.gmail_message_id) }) : r) ?? null)
+          setPollError('')
+        }
       } catch (e) {
         if (!controller.signal.aborted) setPollError(e.message)
       }
-      if (!controller.signal.aborted) timer = setTimeout(poll, 1000)
+      if (!controller.signal.aborted) timer = setTimeout(poll, interval)
     }
-    timer = setTimeout(poll, 1000)
+    timer = setTimeout(poll, interval)
     return () => { controller.abort(); clearTimeout(timer) }
-  }, [messageIds, active])
+  }, [messageIds, active, local, user?.id, pageCount, reload])
 
   const loadMore = async () => {
     if (loadingMore.current || !next) return
@@ -198,6 +217,8 @@ export default function Dashboard({ user, local = false }) {
           )
         })}
       </section>
+
+      <AutomaticAnalysis rows={cur} onSelect={(row) => setSelected(row.id)} />
 
       <section className="chart-row">
         <div className="panel">

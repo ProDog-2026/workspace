@@ -33,6 +33,15 @@ from .sandbox import OUTPUT_LIMIT, ExperimentError, Sandbox, docker_status
 ACTIVE = {"queued", "running", "cancelling"}
 
 
+def mail_subject(record):
+    if (record.get("source") or {}).get("kind") != "mail_pipeline":
+        return None
+    first_line = record.get("mail", "").partition("\n")[0]
+    if first_line.startswith("제목:"):
+        return first_line.removeprefix("제목:").strip()[:500] or None
+    return None
+
+
 def sandbox_for(record):
     context = record.get("sandbox_context", "")
     return Sandbox(record["id"], context=context) if context else Sandbox(record["id"])
@@ -361,6 +370,7 @@ class Experiments:
         self.pending = deque()
         self.closing = False
         self.on_finished = None
+        self.on_changed = None
         self.allow_run = None
         self.cipher = Fernet(settings.token_encryption_key.get_secret_value().encode())
         self.evaluations = EvaluationStore(settings.database_path, self.cipher)
@@ -482,12 +492,15 @@ class Experiments:
             data = {**data, "canary_output_observed": exposed}
         record["events"].append({"type": kind, "time": now(), "data": data})
         self.save(record)
+        if kind == "status" and record["status"] in {"running", "cancelling"} and self.on_changed:
+            self.on_changed(record)
 
     @staticmethod
     def public(record):
         exposure = exposure_observed(record)
         return {
             **{k: v for k, v in record.items() if k not in {"owner", "baseline", "_canary"}},
+            "subject": mail_subject(record),
             "canary_exposure_observed": exposure,
             "observations": {**record["observations"], "canary_leaked": exposure}
             if record.get("observations")
@@ -744,7 +757,7 @@ class Experiments:
             record["status"] = "cancelling"
             if not self.active.cancelling():
                 self.active.cancel()
-            self.save(record)
+            self.emit(record, "status", {"status": "cancelling"})
         else:
             record.update(status="cancelled", finished_at=now())
             self.emit(record, "status", {"status": "cancelled"})
@@ -966,7 +979,13 @@ def register_experiments(app, csrf, session):
         allowed_owners = {current_owner, evaluation_owner(request)}
         return {
             "runs": [
-                {k: r.get(k) for k in ("id", "status", "provider", "model", "created_at", "source")}
+                {
+                    **{
+                        k: r.get(k)
+                        for k in ("id", "status", "provider", "model", "created_at", "source")
+                    },
+                    "subject": mail_subject(r),
+                }
                 for r in sorted(
                     runner.records.values(), key=lambda r: r["created_at"], reverse=True
                 )

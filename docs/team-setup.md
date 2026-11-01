@@ -1,5 +1,7 @@
 # 팀원 pull 후 로컬 실행
 
+Windows에서 AI에게 환경 구성을 맡기려면 [가상화 환경 구성 지시서](virtualization-setup-guide.md)를 전달한다.
+
 대상은 React 대시보드 + Gmail 수집 + 팀 정적 모델 2개 + Ollama 자동 분석이다.
 소스만 pull하면 가중치, `.env`, Python 환경, Docker 이미지, Ollama 모델은 생기지 않는다.
 아래 준비 명령은 팀원이 자기 PC에서 실행하는 절차다. 사전 점검 스크립트는 준비 작업을

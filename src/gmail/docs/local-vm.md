@@ -138,6 +138,8 @@ src/gmail/.venv/bin/python -m ruff check \
 
 ## Windows 팀원
 
+설치·설정·검사를 AI에게 맡기는 순서는 [가상화 환경 구성 지시서](../../../docs/virtualization-setup-guide.md)를 따른다.
+
 이번 준비 스크립트는 Apple Silicon/VZ용이며 Windows에서 같은 파일을 그대로 실행하지 않는다. 기존 Docker Desktop Linux 컨테이너 방식은 유지된다. 그 방식은 전용 Lima VM을 검증한 것과 동일한 상태가 아니다.
 
 별도 Windows VM을 추가할 때도 백엔드의 `SANDBOX_DOCKER_CONTEXT`에 **해당 VM의 Docker context 이름**을 지정하는 동일 인터페이스를 사용한다. Docker CLI·Ollama는 Windows에서 그대로 실행할 수 있다. 전용 VM의 Windows 드라이버·드라이브 자동 공유·SSH/제어 연결은 해당 팀원 PC에서 별도로 구성하고 동일 경계 검사를 통과해야 한다.

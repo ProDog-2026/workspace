@@ -1,5 +1,7 @@
 # ProDog Gmail 메일 연동 모듈
 
+Windows 팀원은 [가상화 환경 구성 지시서](../../docs/virtualization-setup-guide.md)를 사용할 수 있다.
+
 팀원이 pull받은 뒤 준비할 항목은 [팀 실행 안내](../../docs/team-setup.md),
 Gmail 없이 정상/공격 예시를 비교하는 방법은 [합성 메일 쌍 평가](docs/synthetic-evaluation.md)를 따른다.
 

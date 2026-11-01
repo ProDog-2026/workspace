@@ -39,6 +39,7 @@ class MailPipeline:
         self.queue = asyncio.Queue()
         self.worker = None
         self.runner.on_finished = self.finished
+        self.runner.on_changed = self.finished
         self.runner.allow_run = self.allowed
         with store.connection() as conn:
             conn.executescript("""
@@ -310,6 +311,9 @@ class MailPipeline:
         return {
             "id": run["id"],
             "status": run["status"],
+            "provider": run.get("provider"),
+            "model": run.get("model"),
+            "sandbox_context": run.get("sandbox_context"),
             "error": run["error"],
             "observations": {
                 **{k: snapshot.get(k) for k in ("summary_file_present", "complete", "observed_at")},
@@ -426,7 +430,7 @@ class MailPipeline:
         if row:
             dynamic = json.loads(row["data_json"]).get("dynamic")
             record = self.runner.records.get(dynamic["id"]) if dynamic else None
-            if record and record["status"] not in ACTIVE:
+            if record and record["status"] != "queued":
                 self._finished(record)
                 return
         if not row or json.loads(row["data_json"])["status"] not in STATIC_ACTIVE:

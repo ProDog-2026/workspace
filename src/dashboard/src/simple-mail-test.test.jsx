@@ -70,7 +70,7 @@ async function harness(t, options = {}) {
 test('starts with an empty mail, hidden options/history/comparison and sends exactly one local run', async (t) => {
   const h = await harness(t)
   const tree = h.render()
-  assert.deepEqual(tree.props.children.filter((node) => node?.type === 'section').map((node) => node.props['aria-labelledby']), ['mail-test-heading'])
+  assert.deepEqual(tree.props.children.filter((node) => node?.type === 'section').map((node) => node.props['aria-labelledby']), ['automatic-history', 'mail-test-heading'])
   assert.equal(find(tree, (node) => node.props?.id === 'mail-test-mail').props.value, '')
   assert.ok(button(tree, '일반 메일 예시'))
   assert.ok(button(tree, '공격 메일 예시'))
@@ -91,7 +91,7 @@ test('starts with an empty mail, hidden options/history/comparison and sends exa
   assert.equal(sent.csrf, 'csrf-2')
   assert.ok(sent.signal instanceof AbortSignal)
   assert.equal(location.hash, '#/experiment?run=manual-1')
-  assert.deepEqual(h.render().props.children.filter((node) => node?.type === 'section').map((node) => node.props['aria-labelledby']), ['exp-detail', 'mail-test-heading'])
+  assert.deepEqual(h.render().props.children.filter((node) => node?.type === 'section').map((node) => node.props['aria-labelledby']), ['exp-detail', 'automatic-history', 'mail-test-heading'])
   assert.equal(h.calls.some((call) => call.path.startsWith('/api/evaluations')), false)
   assert.match(h.markup(), /대기 중/)
 })
@@ -235,12 +235,12 @@ test('deep-link result precedes the empty form in DOM order while loading and af
   const pending = deferred()
   const h = await harness(t, { hash: '#/experiment?run=manual-1', detail: () => pending.promise })
   const sections = () => h.render().props.children.filter((node) => node?.type === 'section').map((node) => node.props['aria-labelledby'])
-  assert.deepEqual(sections(), ['exp-detail', 'mail-test-heading'])
+  assert.deepEqual(sections(), ['exp-detail', 'automatic-history', 'mail-test-heading'])
   assert.match(h.markup(), /선택한 실행을 불러오는 중/)
   assert.equal(find(h.render(), (node) => node.props?.id === 'mail-test-mail').props.value, '')
   pending.resolve(record({ status: 'completed', events: [{ type: 'model', data: { message: { content: '선택한 실행의 결과입니다.' } } }] }))
   await h.settle()
-  assert.deepEqual(sections(), ['exp-detail', 'mail-test-heading'])
+  assert.deepEqual(sections(), ['exp-detail', 'automatic-history', 'mail-test-heading'])
   assert.equal(find(h.render(), (node) => node.props?.className === 'mail-test-response').props.children, '선택한 실행의 결과입니다.')
 })
 
@@ -279,6 +279,25 @@ test('history uses friendly source titles; automatic runs and deep links stay re
   row.props.onClick(); h.render(); await h.settle()
   assert.equal(location.hash, '#/experiment?run=manual-1')
   assert.ok(h.calls.some((call) => call.path === '/api/experiments/manual-1'))
+})
+
+test('automatic mail runs stay visible without opening history and manual testing remains available', async (t) => {
+  const subject = '회의 일정 <img src=x onerror=alert(1)>'
+  const automaticRun = record({ id: 'auto-run', model: 'local-ai', subject, source: { kind: 'mail_pipeline' } })
+  const h = await harness(t, { runs: [automaticRun], detail: () => automaticRun })
+  const automatic = find(h.render(), (node) => node.props?.['aria-labelledby'] === 'automatic-history')
+  assert.ok(automatic)
+  assert.equal(automatic.props.hidden, undefined)
+  assert.match(h.markup(), /수집 메일 자동 분석/)
+  assert.match(h.markup(), /local-ai/)
+  assert.match(h.markup(), /회의 일정 &lt;img/)
+  assert.doesNotMatch(h.markup(), /<img/)
+  assert.ok(find(h.render(), (node) => node.props?.id === 'mail-test-mail'))
+  find(automatic, (node) => node.type === 'button').props.onClick(); h.render(); await h.settle()
+  assert.equal(location.hash, '#/experiment?run=auto-run')
+  const selected = find(h.render(), (node) => node.props?.className === 'mail-test-subject')
+  assert.equal(selected?.props.children, subject)
+  assert.equal(h.posts().length, 0, 'viewing automatic results must not start another run')
 })
 
 test('changing deep links aborts old polling and ignores its late result', async (t) => {
