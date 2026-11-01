@@ -85,7 +85,7 @@ uv run python scripts/configure_google.py 'C:\경로\client_secret.json'
 | 후속 분석 입력 | `trust=UNTRUSTED`, `analysis_text`, 원문 본문 SHA-256, 불완전 수집 경고 |
 | 토큰 | 서버에서 암호화 저장·자동 갱신, 갱신 실패 시 재연결, 프런트엔드 미노출 |
 | 로컬 DB | 계정별 메타데이터 upsert에는 본문 없음. 자동 분석 본문은 암호화 대기 payload/실행 로그에 저장될 수 있음 |
-| 연결 해제 | Google revoke 성공 후 로컬 토큰·계정·메일 메타데이터·세션 삭제 |
+| 연결 해제 | Google revoke 후 해당 Gmail·본인 실험 정리와 로그/평가 삭제를 확인하고 로컬 토큰·계정·메타데이터·세션 삭제 |
 | 표시 | 외부 이미지 요청과 HTML 실행 없이 텍스트로 표시 |
 
 원문은 최대 2 MiB, 추출 텍스트는 최대 300,000자, MIME part는 100개, 중첩은 20단계까지 처리한다.

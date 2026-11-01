@@ -1,3 +1,4 @@
+import asyncio
 import hashlib
 import hmac
 import json
@@ -17,8 +18,16 @@ def digest(value: str) -> str:
     return hashlib.sha256(value.encode()).hexdigest()
 
 
+def connect_database(path):
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return sqlite3.connect(path, timeout=10)
+    return sqlite3.connect(path, timeout=0)
+
+
 class Store:
-    """Single-machine prototype store. Body text is deliberately absent from the schema."""
+    """Local account/metadata store; pipeline tables can contain encrypted pending mail."""
 
     def __init__(self, settings: Settings):
         self.path = settings.database_path
@@ -36,6 +45,9 @@ class Store:
                 CREATE TABLE IF NOT EXISTS tokens (
                     account_id TEXT PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
                     encrypted TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS account_deletions (
+                    account_id TEXT PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE
                 );
                 CREATE TABLE IF NOT EXISTS sessions (
                     id_hash TEXT PRIMARY KEY,
@@ -65,11 +77,11 @@ class Store:
 
     @contextmanager
     def connection(self):
-        conn = sqlite3.connect(self.path, timeout=10)
+        conn = connect_database(self.path)
         conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA foreign_keys=ON")
-        conn.execute("PRAGMA secure_delete=ON")
         try:
+            conn.execute("PRAGMA foreign_keys=ON")
+            conn.execute("PRAGMA secure_delete=ON")
             with conn:
                 yield conn
         finally:
@@ -171,6 +183,7 @@ class Store:
             account_id = conn.execute(
                 "SELECT id FROM accounts WHERE email=? AND mode=?", (email.casefold(), mode)
             ).fetchone()["id"]
+            self._require_account(conn, account_id)
             if user_id:
                 owner = conn.execute(
                     "SELECT user_id FROM account_owners WHERE account_id=?", (account_id,)
@@ -261,6 +274,25 @@ class Store:
             raise ConnectorError(
                 "authentication_required", "연결이 해제되었습니다. 다시 연결해 주세요.", 401
             )
+        if conn.execute(
+            "SELECT 1 FROM account_deletions WHERE account_id=?", (account_id,)
+        ).fetchone():
+            raise ConnectorError(
+                "account_deleting", "연결 해제 중입니다. 해제를 다시 시도하세요.", 409
+            )
+
+    def start_deletion(self, account_id):
+        with self.connection() as conn:
+            conn.execute("INSERT OR IGNORE INTO account_deletions VALUES (?)", (account_id,))
+
+    def deletion_pending(self, account_id):
+        with self.connection() as conn:
+            return (
+                conn.execute(
+                    "SELECT 1 FROM account_deletions WHERE account_id=?", (account_id,)
+                ).fetchone()
+                is not None
+            )
 
     def complete_oauth(self, secret: str, email: str, response: dict, token_builder) -> str:
         """Commit login only if the initiating session still exists after network I/O.
@@ -281,6 +313,8 @@ class Store:
                 "SELECT id FROM accounts WHERE email=? AND mode='google'", (email.casefold(),)
             ).fetchone()
             account_id = row["id"] if row else str(uuid.uuid4())
+            if row:
+                self._require_account(conn, account_id)
             user_id = current["user_id"]
             owner = conn.execute(
                 "SELECT user_id FROM account_owners WHERE account_id=?", (account_id,)

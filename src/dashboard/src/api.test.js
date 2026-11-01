@@ -74,3 +74,27 @@ test('metadata results are supported and missing component numbers stay unknown'
     { id: 'tfidf', label: '기존 ML(해시 특징)', score: null, verdict: 'safe', thresholds: null },
   ])
 })
+
+test('canary exposure scans all file flags and preserves unknown legacy coverage', async () => {
+  const { canaryExposureObserved } = await import('./api.js')
+  const clean = { status: 'completed', canary_output_observed: false, observations: {
+    complete: true, canary_leaked: false, files: [{ path: '/workspace/private.txt', contains_canary: true }],
+  } }
+  assert.equal(canaryExposureObserved(clean), false)
+  assert.equal(canaryExposureObserved({ status: 'completed', observations: { complete: true, canary_leaked: false } }), null)
+  assert.equal(canaryExposureObserved({ ...clean, canary_output_observed: undefined }), null)
+  assert.equal(canaryExposureObserved({ ...clean, status: 'error' }), null)
+  assert.equal(canaryExposureObserved({ ...clean, canary_output_observed: true }), true)
+  assert.equal(canaryExposureObserved({ ...clean, canary_exposure_observed: true, observations: null }), true)
+  assert.equal(canaryExposureObserved({ ...clean, observations: { complete: true, canary_leaked: false,
+    files: [{ path: '/workspace/summary.txt', contains_canary: true }] } }), true)
+  assert.equal(canaryExposureObserved({ ...clean, observations: { complete: true,
+    files: [{ path: '/workspace/link', contains_canary: null }] } }), null)
+  assert.equal(canaryExposureObserved({ ...clean, events: [{ type: 'files', data: {
+    files: [{ path: '/workspace/other.txt', contains_canary: true }], complete: false,
+  } }] }), true)
+  assert.equal(canaryExposureObserved({ ...clean, baseline: { canary_leaked: true } }), false)
+  assert.equal(canaryExposureObserved({ ...clean, events: [{ type: 'files', data: {
+    complete: false, files: [{ path: '/workspace/large.bin', contains_canary: null }],
+  } }] }), null)
+})

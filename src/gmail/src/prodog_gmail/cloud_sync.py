@@ -1,18 +1,24 @@
-"""Durable metadata/result delivery; never stores a mail body or access token."""
+"""Metadata/result outbox only; encrypted mail inputs/logs belong to the local pipeline."""
 
 import asyncio
 import contextlib
 import json
+import logging
+import sqlite3
 import time
 from collections import defaultdict
 
 from .errors import ConnectorError
+
+logger = logging.getLogger(__name__)
+WORKER_ERROR = "클라우드 동기화 오류. 서버가 자동으로 다시 시도합니다."
 
 
 class CloudSync:
     def __init__(self, store, sink):
         self.store, self.sink = store, sink
         self.worker = None
+        self.worker_error = None
         self.changed = asyncio.Event()
         self.locks = defaultdict(asyncio.Lock)
         with store.connection() as conn:
@@ -35,33 +41,51 @@ class CloudSync:
             conn.execute(
                 "INSERT INTO cloud_outbox(account_id,message_id) "
                 "SELECT ?,? WHERE EXISTS(SELECT 1 FROM account_owners WHERE account_id=?) "
+                "AND NOT EXISTS(SELECT 1 FROM account_deletions WHERE account_id=?) "
                 "ON CONFLICT(account_id,message_id) DO UPDATE SET "
                 "revision=revision+1,next_attempt=0",
-                (account_id, message_id, account_id),
+                (account_id, message_id, account_id, account_id),
             )
         self.changed.set()
 
     def status(self, account_id):
-        with self.store.connection() as conn:
-            row = conn.execute(
-                "SELECT COUNT(*) AS pending,MAX(last_error) AS error "
-                "FROM cloud_outbox WHERE account_id=?",
-                (account_id,),
-            ).fetchone()
-        return {"configured": self.sink is not None, **dict(row)}
+        try:
+            if self.store.deletion_pending(account_id):
+                return {
+                    "configured": self.sink is not None,
+                    "pending": None,
+                    "error": "연결 해제가 끝나지 않았습니다. 연동 해제를 다시 시도하세요.",
+                }
+            with self.store.connection() as conn:
+                row = conn.execute(
+                    "SELECT COUNT(*) AS pending,MAX(last_error) AS error "
+                    "FROM cloud_outbox WHERE account_id=?",
+                    (account_id,),
+                ).fetchone()
+        except sqlite3.Error:
+            return {"configured": self.sink is not None, "pending": None, "error": WORKER_ERROR}
+        return {
+            "configured": self.sink is not None,
+            "pending": row["pending"],
+            "error": self.worker_error or row["error"],
+        }
 
     async def flush_once(self):
         if self.sink is None:
             return False
         with self.store.connection() as conn:
             row = conn.execute(
-                "SELECT * FROM cloud_outbox WHERE next_attempt<=? ORDER BY next_attempt LIMIT 1",
+                "SELECT * FROM cloud_outbox WHERE next_attempt<=? "
+                "AND NOT EXISTS(SELECT 1 FROM account_deletions d "
+                "WHERE d.account_id=cloud_outbox.account_id) ORDER BY next_attempt LIMIT 1",
                 (time.time(),),
             ).fetchone()
         if not row:
             return False
         account_id, message_id = row["account_id"], row["message_id"]
         async with self.locks[account_id]:
+            if self.store.deletion_pending(account_id):
+                return False
             with self.store.connection() as conn:
                 account = conn.execute(
                     "SELECT a.email,o.user_id FROM accounts a JOIN account_owners o "
@@ -127,13 +151,23 @@ class CloudSync:
         return True
 
     async def open(self):
+        if self.worker and not self.worker.done():
+            return
+
         async def work():
             while True:
-                self.changed.clear()
-                if await self.flush_once():
-                    continue
-                with contextlib.suppress(TimeoutError):
-                    await asyncio.wait_for(self.changed.wait(), timeout=1)
+                try:
+                    self.changed.clear()
+                    flushed = await self.flush_once()
+                    self.worker_error = None
+                    if flushed:
+                        continue
+                    with contextlib.suppress(TimeoutError):
+                        await asyncio.wait_for(self.changed.wait(), timeout=1)
+                except Exception:
+                    self.worker_error = WORKER_ERROR
+                    logger.error(WORKER_ERROR)
+                    await asyncio.sleep(1)
 
         self.worker = asyncio.create_task(work())
 

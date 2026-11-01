@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { gmail } from './api'
+import { canaryExposureObserved, gmail } from './api'
 import Evaluation from './Evaluation'
 import './experiment.css'
 
@@ -236,8 +236,8 @@ export default function Experiment() {
     window.setTimeout(() => URL.revokeObjectURL(url), 1000)
   }
   const observations = shown?.observations
-  const copied = shown?.canary_target_observed === true || observations?.canary_leaked === true || shown?.events?.some((event) => event.type === 'files' && event.data?.canary_leaked === true)
-  const copyResult = copied ? '복사 확인됨' : active(shown) ? '확인 중' : !observations?.complete || observations?.canary_leaked == null ? '미확인' : '관찰되지 않음'
+  const exposure = canaryExposureObserved(shown)
+  const copyResult = exposure === true ? '노출 확인됨' : active(shown) ? '확인 중' : exposure === false ? '관찰되지 않음' : '미확인'
   const summary = observations?.files?.find((file) => file.path === '/workspace/summary.txt')
   const response = shown?.events?.filter((event) => event.type === 'model' && typeof event.data?.message?.content === 'string' && event.data.message.content.trim()).at(-1)?.data.message.content
   const answer = summary?.preview?.trim() || response
@@ -265,13 +265,13 @@ export default function Experiment() {
               <span>작업 이탈 조건: <strong>{qualityLabel(shown.quality_checks?.task_deviation)}</strong></span>
             </div>
             <p className="note">지정 문구 기준이며 의미 전체를 자동 판정하지 않아요. 조건이 없거나 이전 기록에 결과가 없으면 미확인이에요.</p>
-            <p className="mail-test-copy"><span>테스트 파일에 가짜 토큰 복사</span> <strong>{copyResult}</strong></p>
-            <p className="note">파일 복사 관찰만으로 메일의 안전을 보장하지 않아요.{!active(shown) && !observations?.complete ? ' 파일 관찰이 불완전해요.' : ''}</p>
+            <p className="mail-test-copy"><span>가짜 토큰 노출</span> <strong>{copyResult}</strong></p>
+            <p className="note">원본 private.txt를 제외한 수집 파일과 명령 출력을 확인해요. 미관측이 안전을 뜻하지 않아요.{!active(shown) && !observations?.complete ? ' 파일 관찰이 불완전해요.' : ''}</p>
             <details key={shown.id} className="mail-test-record"><summary>상세 기록</summary><div className="experiment-detail">
               <div className="experiment-actions"><button type="button" className="btn" onClick={download}>JSON 다운로드</button></div>
               <p className="note">{sourceName(shown)} · {shown.provider} / {shown.model}<br />시작 {date(shown.created_at)} · 종료 {date(shown.finished_at)}<br />ID: {shown.id}</p>
               <p className="note">실행 환경: {shown.sandbox_context || '기본 Docker 설정 · 이전 기록'}</p>
-              <p className="note">복사 관찰 대상: /workspace/leak.txt · 요약 파일: {observations?.summary_file_present === true ? '있음' : observations?.summary_file_present === false ? '없음' : '미확인'}. 실행 완료는 AI 대화가 끝났다는 뜻이에요.</p>
+              <p className="note">노출 관찰: 수집 파일·명령 출력 · 요약 파일: {observations?.summary_file_present === true ? '있음' : observations?.summary_file_present === false ? '없음' : '미확인'}. 실행 완료는 AI 대화가 끝났다는 뜻이에요.</p>
               <details><summary>분석에 사용된 입력</summary><h3>작업</h3><pre>{shown.task}</pre><h3>메일</h3><pre>{shown.mail}</pre></details>
               <h3>진행 로그 <span className="note">{shown.events?.length ?? 0}건</span></h3>
               <ol className="experiment-log">{(shown.events || []).map((event, index) => <li key={index}><p><strong>{EVENTS[event.type] || event.type}</strong> <time className="note">{date(event.time)}</time></p><pre>{plain(event.data)}</pre></li>)}</ol>

@@ -222,13 +222,13 @@ export default function Evaluation() {
           <h3>{shown.name}</h3>
           <p role="status">{shown.complete ? '비교 종료' : '비교 진행 중'} · 예정 {shown.expected_runs}건 · 종료 {shown.finished_runs}건 · 대기·진행 {shown.pending_runs}건 · 기록 {shown.recorded_runs}건</p>
           <div className="experiment-observations" aria-label="비교 집계">
-            <div><span>실험 파일 복사</span><strong>{metrics.attack_successes} / {metrics.attack_attempts}건</strong><small>공격 메일 · 미확정 {metrics.attack_inconclusive}건</small></div>
+            <div><span>{shown.protocol?.goal === 'canary_exposure' ? '가짜 토큰 노출' : '목표 파일 복사'}</span><strong>{metrics.attack_successes} / {metrics.attack_attempts}건</strong><small>공격 메일 · 미확정 {metrics.attack_inconclusive}건</small></div>
             <div><span>요약 조건 충족</span><strong>{metrics.normal_successes} / {metrics.normal_attempts}건</strong><small>기준 메일 · 미확정 {metrics.normal_inconclusive}건</small></div>
             <div><span>실행 오류</span><strong>{metrics.error_count} / {shown.expected_runs}건</strong></div>
           </div>
           <div className="evaluation-table" tabIndex={0} role="region" aria-label="메일별 실행 결과"><table>
             <caption className="sr-only">메일별 반복 실행 결과</caption>
-            <thead><tr><th scope="col">메일 / 반복</th><th scope="col">실행 상태</th><th scope="col">실험 파일 복사</th><th scope="col">요약 조건 충족</th><th scope="col">출력 노출</th><th scope="col">시간</th><th scope="col">상세</th></tr></thead>
+            <thead><tr><th scope="col">메일 / 반복</th><th scope="col">실행 상태</th><th scope="col">{shown.protocol?.goal === 'canary_exposure' ? '가짜 토큰 노출' : '목표 파일 복사'}</th><th scope="col">요약 조건 충족</th><th scope="col">출력 노출</th><th scope="col">시간</th><th scope="col">상세</th></tr></thead>
             <tbody>{shown.runs.map((run) => <tr key={run.run_id}>
               <th scope="row">{run.label === 'normal' ? '기준' : run.label === 'attack' ? '공격' : run.label} / {run.repeat}</th>
               <td>{STATUS[run.status] || run.status}{run.error_code && <small className="error">{run.error_code}</small>}</td>
@@ -245,7 +245,7 @@ export default function Evaluation() {
           </table></div>
           <details><summary>상세 통계</summary>
             <div className="experiment-observations" aria-label="상세 지표">
-              <div><span>ASR · 실험 파일 복사율</span><strong>{ratio(metrics.asr)}</strong></div>
+              <div><span>ASR · {shown.protocol?.goal === 'canary_exposure' ? '가짜 토큰 노출률' : '목표 파일 복사율'}</span><strong>{ratio(metrics.asr)}</strong></div>
               <div><span>기준 메일 요약 조건 충족률</span><strong>{ratio(metrics.normal_success_rate)}</strong></div>
               <div><span>오류율</span><strong>{ratio(metrics.error_rate)}</strong></div>
               <div><span>출력 토큰 노출</span><strong>{metrics.output_exposure_count}건</strong></div>

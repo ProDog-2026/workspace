@@ -33,7 +33,8 @@ export default function Settings({ user }) {
     return () => controller.abort()
   }, [])
 
-  const connected = !!session?.authenticated && !session.needs_reconnect
+  const deleting = !!session?.disconnect_pending
+  const connected = !!session?.authenticated && !session.needs_reconnect && !deleting
   useEffect(() => {
     setSettings(null)
     setSettingsError('')
@@ -76,10 +77,10 @@ export default function Settings({ user }) {
     if (!signal.aborted) location.assign(data.authorization_url)
   })
   const disconnect = () => {
-    if (!window.confirm('연동을 해제하면 저장된 검사 결과가 삭제돼요. 계속할까요?')) return
+    if (!window.confirm('저장된 이 Gmail의 검사 결과와 본인 동적 실험 기록이 삭제돼요. 계속할까요?')) return
     return run(async (signal) => {
-      await post('/api/disconnect', signal)
-      if (!signal.aborted) await refresh(signal)
+      try { await post('/api/disconnect', signal) }
+      finally { if (!signal.aborted) await refresh(signal) }
     })
   }
   const save = async (e) => {
@@ -120,14 +121,14 @@ export default function Settings({ user }) {
           <th scope="row">Gmail</th>
           <td><div className="cell">
             {!session ? <span className="muted">{busy ? '연결 상태 확인 중…' : '연결 상태를 알 수 없어요.'}</span>
-              : connected ? <>
+              : connected || deleting ? <>
                 <span>{session.email}</span><span className="tag ro">{session.mode === 'demo' ? '데모 연결' : '읽기 전용'}</span>
-                <button type="button" className="btn" disabled={busy || saving} aria-describedby="disconnect-warning" onClick={disconnect}>연동 해제</button>
+                <button type="button" className="btn" disabled={busy || saving} aria-describedby="disconnect-warning" onClick={disconnect}>{deleting ? '해제 다시 시도' : '연동 해제'}</button>
               </> : <>
                 <span className="muted">{session.needs_reconnect ? 'Gmail 권한이 만료됐어요. 다시 연결해 주세요.' : 'Gmail을 연결해 주세요.'}</span>
                 <button type="button" className="btn primary" disabled={busy || !session.configured || (session.app_auth_required && !session.user_id)} onClick={connect}>{session.needs_reconnect ? '다시 연결하기' : 'Gmail 연결하기'}</button>
               </>}
-          </div>{connected && <p id="disconnect-warning" className="note">연동을 해제하면 저장된 검사 결과가 삭제돼요.</p>}
+          </div>{(connected || deleting) && <p id="disconnect-warning" className="note">{deleting ? '연결 해제가 끝나지 않았어요. 해제를 다시 시도해 주세요. ' : ''}연동을 해제하면 저장된 이 Gmail의 검사 결과와 본인 동적 실험 기록이 삭제돼요.</p>}
             {error && <p className="note" role="alert">{error}</p>}
             {session && !session.configured && <p className="note" role="alert">Gmail 연결 설정이 필요해요. 아래 연결 상태를 확인하세요.</p>}
             {session?.app_auth_required && !session.user_id && <p className="note" role="alert">먼저 <a href="#/login">로그인</a>한 뒤 Gmail을 연결하세요.</p>}
@@ -139,7 +140,7 @@ export default function Settings({ user }) {
           <summary>연결 상태 자세히</summary>
           <p className="note">Gmail 연결은 로그인한 본인 계정에 저장돼요.</p>
           {session && <p className="note" role="status">{session.user_id
-            ? session.cloud?.configured ? `저장 연결됨 · 저장 대기 ${session.cloud.pending ?? 0}건`
+            ? session.cloud?.configured ? session.cloud.pending == null ? '저장 상태 확인 중' : `저장 연결됨 · 저장 대기 ${session.cloud.pending}건`
               : '사용자 검증 완료 · 서버 저장 설정이 필요해요.'
             : session.app_auth_required ? '먼저 앱에 로그인한 뒤 Gmail을 연결하세요.' : '서버의 Supabase Auth 설정을 확인하세요.'}</p>}
         </details>

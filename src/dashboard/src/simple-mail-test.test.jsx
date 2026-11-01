@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { registerHooks } from 'node:module'
 import { mock, test } from 'node:test'
 import { hooks, find } from '../tests/hooks.js'
+import { canaryExposureObserved } from './api.js'
 
 registerHooks({ load(url, context, next) {
   return url.endsWith('.css') ? { format: 'module', shortCircuit: true, source: '' } : next(url, context)
@@ -35,7 +36,7 @@ async function harness(t, options = {}) {
   t.mock.method(globalThis, 'clearTimeout', (id) => timers.delete(id))
   const Comparison = () => null
   mock.module('./Evaluation.jsx', { defaultExport: Comparison })
-  mock.module('./api.js', { namedExports: { gmail: async (path, csrf, payload, settings = {}) => {
+  mock.module('./api.js', { namedExports: { canaryExposureObserved, gmail: async (path, csrf, payload, settings = {}) => {
     calls.push({ path, csrf: csrf || settings.headers?.['X-CSRF-Token'], payload: payload || (settings.body && JSON.parse(settings.body)), signal: settings.signal, method: settings.method })
     if (path === '/api/session') return options.session ? options.session(++sessions) : { csrf_token: `csrf-${++sessions}`, app_auth_required: false, authenticated: false }
     if (path.startsWith('/api/experiments/readiness?')) return options.readiness ? options.readiness(path, settings.signal) : { ready: true, sandbox: { ready: true }, model: { ready: true }, cleanup: { ready: true } }
@@ -198,7 +199,7 @@ test('pending observations stay unknown and completion exposes summary without a
       files: [{ path: '/workspace/summary.txt', preview: '오후 3시 회의에 참석하세요.', size: 40 }], changes: [] } })
   await h.tick()
   assert.match(h.markup(), /오후 3시 회의에 참석하세요/)
-  assert.match(h.markup(), /안전.*보장.*않/)
+  assert.match(h.markup(), /미관측.*안전.*뜻하지/)
   const count = h.calls.filter((call) => call.path === '/api/experiments/manual-1').length
   await h.tick()
   assert.equal(h.calls.filter((call) => call.path === '/api/experiments/manual-1').length, count)
@@ -219,7 +220,7 @@ test('completed incomplete observations stay unknown, while an earlier positive 
   current = record({ status: 'completed', events: [{ type: 'files', data: { canary_leaked: true } }],
     observations: { complete: true, canary_leaked: false, files: [], changes: [] } })
   button(h.render(), '새로고침').props.onClick(); h.render(); await h.settle()
-  assert.equal(copy().props.children[2].props.children, '복사 확인됨')
+  assert.equal(copy().props.children[2].props.children, '노출 확인됨')
 })
 
 test('cumulative target-copy flag remains positive when snapshots are negative and events are missing', async (t) => {
@@ -227,7 +228,7 @@ test('cumulative target-copy flag remains positive when snapshots are negative a
     canary_target_observed: true, events: undefined,
     observations: { complete: true, canary_leaked: false, files: [], changes: [] } }) })
   const copy = find(h.render(), (node) => node.props?.className === 'mail-test-copy')
-  assert.equal(copy.props.children[2].props.children, '복사 확인됨')
+  assert.equal(copy.props.children[2].props.children, '노출 확인됨')
 })
 
 test('deep-link result precedes the empty form in DOM order while loading and after its response', async (t) => {

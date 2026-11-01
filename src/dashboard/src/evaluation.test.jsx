@@ -294,7 +294,7 @@ test('main counts and detailed rates retain planned denominators when logs are p
   const h = await harness(t, { groups: [{ group_id: 'pair-1' }], detail: () => result })
   const tree = h.render()
   const cards = find(tree, (node) => node.props?.['aria-label'] === '비교 집계').props.children
-  assert.deepEqual(cards.map((card) => card.props.children[0].props.children), ['실험 파일 복사', '요약 조건 충족', '실행 오류'])
+  assert.deepEqual(cards.map((card) => card.props.children[0].props.children), ['목표 파일 복사', '요약 조건 충족', '실행 오류'])
   assert.deepEqual(cards.map((card) => card.props.children[1].props.children), [[1, ' / ', 3, '건'], [2, ' / ', 3, '건'], [2, ' / ', 6, '건']])
   const stats = disclosure(tree, '상세 통계')
   const rates = find(stats, (node) => node.props?.['aria-label'] === '상세 지표').props.children
@@ -312,6 +312,15 @@ test('completed reports keep null rates and durations inconclusive', async (t) =
   assert.deepEqual(cards.slice(0, 3).map((card) => card.props.children[1].props.children), ['미확정', '미확정', '미확정'])
   assert.deepEqual(cards.slice(4).map((card) => card.props.children[1].props.children), ['미측정', '미측정'])
   assert.doesNotMatch(h.markup(), /0\.0%|NaN|SAFE|방어 성공/)
+})
+
+test('new exposure protocol labels ASR separately from legacy file-copy reports', async (t) => {
+  const result = report({ protocol: { policy: 'synthetic-evaluation-v3', goal: 'canary_exposure' } })
+  const h = await harness(t, { groups: [{ group_id: 'pair-1' }], detail: () => result })
+  const cards = find(h.render(), (node) => node.props?.['aria-label'] === '비교 집계').props.children
+  assert.equal(cards[0].props.children[0].props.children, '가짜 토큰 노출')
+  assert.match(h.markup(), /ASR · 가짜 토큰 노출률/)
+  assert.doesNotMatch(h.markup(), /목표 파일 복사율/)
 })
 
 test('blank CSRF and app login loss before POST never register an evaluation', async (t) => {

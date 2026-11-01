@@ -3,6 +3,7 @@ import { registerHooks } from 'node:module'
 import { mock, test } from 'node:test'
 import { hooks, find } from '../tests/hooks.js'
 import { DEFAULT_RULES, DEFAULT_THRESHOLDS, verdictOf } from './rules'
+import { canaryExposureObserved } from './api.js'
 
 registerHooks({ load(url, context, next) {
   return url.endsWith('.css') ? { format: 'module', shortCircuit: true, source: '' } : next(url, context)
@@ -30,13 +31,13 @@ function browser(t, hash) {
   return listeners
 }
 
-async function settingsHarness(t) {
+async function settingsHarness(t, sessionOverrides = {}) {
   browser(t, '#/settings')
   const h = hooks(t), calls = []
   let connected = true
   mock.module('./api.js', { namedExports: { DETECTOR_NAMES: {}, gmail: async (path, csrf, payload, options) => {
     calls.push({ path, csrf, payload, signal: options?.signal })
-    if (path === '/api/session') return { authenticated: connected, csrf_token: 'synthetic-csrf', email: 'synthetic@example.invalid', mode: 'demo', configured: true }
+    if (path === '/api/session') return { authenticated: connected, csrf_token: 'synthetic-csrf', email: 'synthetic@example.invalid', mode: 'demo', configured: true, ...(connected ? sessionOverrides : {}) }
     if (path === '/api/analysis/settings') return { enabled: false, model: '', ollama_models: [] }
     if (path === '/api/disconnect') { connected = false; return { disconnected: true } }
     assert.fail(`unexpected API request: ${path}`)
@@ -46,6 +47,18 @@ async function settingsHarness(t) {
   render(); await h.flush(); render(); await h.flush(); render()
   return { ...h, calls, render }
 }
+
+test('pending unlink remains retryable when Gmail needs reconnection', async (t) => {
+  const h = await settingsHarness(t, { disconnect_pending: true, needs_reconnect: true })
+  t.mock.method(globalThis, 'confirm', () => true)
+  const retry = find(h.render(), (node) => node.type === 'button' && node.props.children === '해제 다시 시도')
+  assert.ok(retry)
+  assert.doesNotMatch(h.markup(), /다시 연결하기/)
+  await retry.props.onClick()
+  await h.flush(); h.render()
+  assert.ok(h.calls.some(({ path }) => path === '/api/disconnect'))
+  assert.doesNotMatch(h.markup(), /해제 다시 시도/)
+})
 
 test('unlink discloses stored inspection deletion and cancellation makes no request', async (t) => {
   const h = await settingsHarness(t)
@@ -83,7 +96,7 @@ async function experimentHarness(t, session) {
   t.mock.method(globalThis, 'setTimeout', (callback) => { const id = ++timerId; timers.set(id, callback); return id })
   t.mock.method(globalThis, 'clearTimeout', (id) => timers.delete(id))
   mock.module('./Evaluation.jsx', { defaultExport: () => null })
-  mock.module('./api.js', { namedExports: { gmail: async (path, _csrf, _payload, options) => {
+  mock.module('./api.js', { namedExports: { canaryExposureObserved, gmail: async (path, _csrf, _payload, options) => {
     calls.push({ path, signal: options?.signal })
     if (path === '/api/session') {
       const initialized = await session()

@@ -1,6 +1,7 @@
 import asyncio
 import hmac
 import re
+import sqlite3
 import time
 from collections import defaultdict, deque
 from contextlib import asynccontextmanager
@@ -17,7 +18,7 @@ from .auth import SupabaseAuth
 from .cloud_sync import CloudSync
 from .config import Settings, get_settings
 from .demo import demo_messages
-from .errors import ConnectorError
+from .errors import ConnectorError, database_busy
 from .experiments import Experiments, register_experiments
 from .google import GoogleClient
 from .mail import mail_metadata, parse_gmail_message
@@ -146,6 +147,11 @@ def create_app(settings: Settings | None = None, transport=None) -> FastAPI:
         return {
             "authenticated": authenticated,
             "needs_reconnect": bool(bundle and bundle.get("needs_reconnect")),
+            "disconnect_pending": bool(
+                current
+                and current["account_id"]
+                and application.state.store.deletion_pending(current["account_id"])
+            ),
             "email": current["email"] if authenticated else None,
             "csrf_token": application.state.store.csrf(secret),
             "mode": config.app_mode,
@@ -228,6 +234,21 @@ def create_app(settings: Settings | None = None, transport=None) -> FastAPI:
             status_code=422,
         )
 
+    @application.exception_handler(sqlite3.OperationalError)
+    async def database_error(request, exc):
+        if not database_busy(exc):
+            raise exc
+        return JSONResponse(
+            {
+                "error": {
+                    "code": "database_busy",
+                    "message": "저장소가 사용 중입니다. 잠시 후 다시 시도하세요.",
+                }
+            },
+            status_code=503,
+            headers={"Retry-After": "1"},
+        )
+
     @application.get("/")
     async def index():
         return FileResponse(STATIC / "index.html")
@@ -243,7 +264,9 @@ def create_app(settings: Settings | None = None, transport=None) -> FastAPI:
         user_id = getattr(request.state, "user_id", None)
         if (
             application.state.settings.supabase_auth_configured
-            and previous and previous["user_id"] and not user_id
+            and previous
+            and previous["user_id"]
+            and not user_id
         ):
             raise ConnectorError("app_auth_required", "먼저 앱에 로그인하세요.", 401)
         if not current:
@@ -329,6 +352,8 @@ def create_app(settings: Settings | None = None, transport=None) -> FastAPI:
     async def get_mail(current: dict, message_id: str):
         if not MESSAGE_ID.fullmatch(message_id):
             raise ConnectorError("invalid_message_id", "올바른 메일 ID가 아닙니다.")
+        with application.state.store.connection() as conn:
+            application.state.store._require_account(conn, current["account_id"])
         if current["mode"] == "demo":
             raw = next((m for m in demo_messages() if m["id"] == message_id), None)
             if raw is None:
@@ -447,6 +472,8 @@ def create_app(settings: Settings | None = None, transport=None) -> FastAPI:
         page = await load_page(current, limit, None)
         async with application.state.cloud.locks[current["account_id"]]:
             _, current = session(request, required=True)
+            with application.state.store.connection() as conn:
+                application.state.store._require_account(conn, current["account_id"])
             analyses = {
                 mail["id"]: result
                 for mail in page["messages"]
@@ -467,15 +494,27 @@ def create_app(settings: Settings | None = None, transport=None) -> FastAPI:
     async def disconnect(request: Request):
         secret, _ = csrf(request)
         _, current = session(request, required=True)
-        if current["mode"] == "google":
-            await application.state.google.revoke(current["account_id"])
         async with application.state.cloud.locks[current["account_id"]]:
+            application.state.store.start_deletion(current["account_id"])
             application.state.pipeline.cancel_account(current["account_id"])
+            if current["mode"] == "google":
+                await application.state.google.revoke(current["account_id"])
             if application.state.supabase:
                 # A late save must not recreate a deleted connection.
                 await application.state.supabase.delete_connection(
                     current["email"], user_id=current["user_id"]
                 )
+            owners = {"account:" + current["account_id"], digest(secret)}
+            if current["user_id"]:
+                owners.add("user:" + current["user_id"])
+            with application.state.store.connection() as conn:
+                owners.update(
+                    row[0]
+                    for row in conn.execute(
+                        "SELECT id_hash FROM sessions WHERE account_id=?", (current["account_id"],)
+                    )
+                )
+            await application.state.experiments.forget_owners(owners)
             application.state.store.forget_account(current["account_id"])
         response = JSONResponse({"disconnected": True})
         response.delete_cookie(COOKIE, path="/", httponly=True, samesite="lax")

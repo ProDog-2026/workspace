@@ -15,8 +15,9 @@ from fastapi import Query, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
+from .canary import exposure_observed, file_exposure
 from .dynamic_readiness import check_readiness, require_ready
-from .errors import ConnectorError
+from .errors import ConnectorError, database_busy
 from .evaluations import EvaluationStore, register_evaluations
 from .experiment_model import (
     OLLAMA_INPUT_BYTES,
@@ -107,7 +108,9 @@ def observations(snapshot, baseline):
         "files": snapshot["files"],
         "changes": changes,
         "complete": snapshot["complete"],
-        "canary_leaked": leak.get("contains_canary")
+        "canary_leaked": file_exposure(snapshot),
+        "canary_files_exposed": file_exposure(snapshot),
+        "canary_target_leaked": leak.get("contains_canary")
         if leak
         else False
         if snapshot["complete"]
@@ -362,6 +365,8 @@ class Experiments:
         self.cipher = Fernet(settings.token_encryption_key.get_secret_value().encode())
         self.evaluations = EvaluationStore(settings.database_path, self.cipher)
         self.evaluation_states = {}
+        self.deleting_owners = set()
+        self.history_versions = {}
         self.client = httpx.AsyncClient(follow_redirects=False, trust_env=False)
 
     async def open(self):
@@ -420,8 +425,27 @@ class Experiments:
                 or self.evaluation_states.get(record["id"]) != record["status"]
             )
         ):
-            self.evaluations.save(record)
-            self.evaluation_states[record["id"]] = record["status"]
+            try:
+                self.evaluations.save(record)
+            except sqlite3.OperationalError as exc:
+                if not database_busy(exc):
+                    raise
+                self.evaluation_states.pop(record["id"], None)
+            else:
+                self.evaluation_states[record["id"]] = record["status"]
+
+    def sync_evaluations(self, owner):
+        pending = [
+            record
+            for record in self.records.values()
+            if record["owner"] == owner
+            and record.get("evaluation")
+            and self.evaluation_states.get(record["id"]) != record["status"]
+        ]
+        if pending:
+            self.evaluations.save_group(pending)
+            for record in pending:
+                self.evaluation_states[record["id"]] = record["status"]
 
     def emit(self, record, kind, data):
         if (
@@ -433,6 +457,8 @@ class Experiments:
                 **record["observations"],
                 "complete": False,
                 "canary_leaked": None,
+                "canary_files_exposed": None,
+                "canary_target_leaked": None,
                 "summary_file_present": None,
                 "summary_nonempty": None,
                 "summary_matches": None,
@@ -442,8 +468,10 @@ class Experiments:
         if kind == "files":
             record["observations"] = observations(data, record["baseline"])
             data = record["observations"]
-            if data["canary_leaked"] is True:
+            if data["canary_target_leaked"] is True:
                 record["canary_target_observed"] = True
+            if data["canary_files_exposed"] is True:
+                record["canary_files_observed"] = True
         if kind == "tool_result" and record.get("_canary"):
             exposed = any(
                 record["_canary"] in str(data.get(key, "")) for key in ("stdout", "stderr")
@@ -451,13 +479,19 @@ class Experiments:
             record["canary_output_observed"] = (
                 record.get("canary_output_observed", False) or exposed
             )
+            data = {**data, "canary_output_observed": exposed}
         record["events"].append({"type": kind, "time": now(), "data": data})
         self.save(record)
 
     @staticmethod
     def public(record):
+        exposure = exposure_observed(record)
         return {
             **{k: v for k, v in record.items() if k not in {"owner", "baseline", "_canary"}},
+            "canary_exposure_observed": exposure,
+            "observations": {**record["observations"], "canary_leaked": exposure}
+            if record.get("observations")
+            else None,
             "quality_checks": assess_results(record),
         }
 
@@ -478,6 +512,10 @@ class Experiments:
         return self.enqueue(spec, owner, protocol=protocol)
 
     def enqueue(self, spec, owner, source=None, *, evaluation=None, protocol=None, prepare=False):
+        if owner in self.deleting_owners:
+            raise ConnectorError(
+                "experiment_deleting", "실험 기록을 삭제 중입니다. 다시 시도하세요.", 409
+            )
         self._check_cleanup()
         if source:
             for existing in self.records.values():
@@ -532,6 +570,10 @@ class Experiments:
         return record
 
     def admit_group(self, records):
+        if any(record["owner"] in self.deleting_owners for record in records):
+            raise ConnectorError(
+                "experiment_deleting", "실험 기록을 삭제 중입니다. 다시 시도하세요.", 409
+            )
         self._check_cleanup()
         if len(self.pending) + len(records) > 100:
             raise ConnectorError("queue_full", "실험 대기열이 가득 찼습니다.", 429)
@@ -629,6 +671,71 @@ class Experiments:
 
             self.active.add_done_callback(finished)
             return
+
+    async def forget_owners(self, owners):
+        owners = set(owners)
+        if self.deleting_owners & owners:
+            raise ConnectorError(
+                "experiment_deleting", "실험 기록을 삭제 중입니다. 다시 시도하세요.", 409
+            )
+        self.deleting_owners.update(owners)
+        for owner in owners:
+            self.history_versions[owner] = self.history_versions.get(owner, 0) + 1
+        try:
+            records = [record for record in self.records.values() if record["owner"] in owners]
+            active = self.active if self.running_id in {r["id"] for r in records} else None
+            for record in records:
+                self.cancel(record)
+            if active:
+                try:
+                    await asyncio.shield(active)
+                except asyncio.CancelledError:
+                    if not active.done():
+                        raise
+            if any((r.get("error") or {}).get("code") == "cleanup_failed" for r in records):
+                raise ConnectorError(
+                    "cleanup_failed",
+                    "실험 환경 정리를 확인하지 못했습니다. 정리 후 다시 해제하세요.",
+                    503,
+                )
+            try:
+                paths = {
+                    self.directory / (record["id"] + suffix)
+                    for record in records
+                    for suffix in (".json", ".tmp")
+                }
+                for path in [*self.directory.glob("*.json"), *self.directory.glob("*.tmp")]:
+                    if (
+                        path in paths
+                        or path.stem in self.records
+                        or path.is_symlink()
+                        or not re.fullmatch(r"[a-f0-9]{32}", path.stem)
+                    ):
+                        continue
+                    try:
+                        saved = json.loads(path.read_text(encoding="utf-8"))
+                        if "encrypted" in saved:
+                            saved = json.loads(self.cipher.decrypt(saved["encrypted"].encode()))
+                        if saved.get("owner") in owners:
+                            paths.add(path)
+                    except (ValueError, TypeError, AttributeError, InvalidToken):
+                        continue
+                for path in paths:
+                    path.unlink(missing_ok=True)
+                self.evaluations.forget_owners(owners)
+            except (OSError, sqlite3.Error) as exc:
+                raise ConnectorError(
+                    "experiment_delete_failed",
+                    "실험 기록을 삭제하지 못했습니다. 다시 해제하세요.",
+                    503,
+                ) from exc
+            ids = {record["id"] for record in records}
+            self.pending = deque(run_id for run_id in self.pending if run_id not in ids)
+            for run_id in ids:
+                self.records.pop(run_id, None)
+                self.evaluation_states.pop(run_id, None)
+        finally:
+            self.deleting_owners.difference_update(owners)
 
     def cancel(self, record):
         if record["status"] not in ACTIVE:
@@ -880,6 +987,7 @@ def register_experiments(app, csrf, session):
     async def start(request: Request):
         csrf(request)
         runner, current_owner = manager(), evaluation_owner(request)
+        history_version = runner.history_versions.get(current_owner, 0)
         # Enforce input bytes before parsing: model-generated commands are not accepted here.
         body = bytearray()
         async for chunk in request.stream():
@@ -922,6 +1030,10 @@ def register_experiments(app, csrf, session):
                 "quality_check": "configured_text_conditions-v1",
             }
         csrf(request)
+        if runner.history_versions.get(current_owner, 0) != history_version:
+            raise ConnectorError(
+                "experiment_history_changed", "실험 기록이 삭제됐습니다. 다시 시작하세요.", 409
+            )
         if evaluation_owner(request) != current_owner:
             raise ConnectorError(
                 "session_changed", "로그인 상태가 바뀌었어요. 다시 시도하세요.", 409

@@ -93,7 +93,7 @@ export default function Dashboard({ user, local = false }) {
   }, [local, user?.id, reload])
 
   const messageIds = (scans ?? []).filter((r) => ACTIVE.has(r.analysis?.status)).map((r) => r.gmail_message_id).join(',')
-  const active = local && (!!messageIds || (scans !== null && cloud === null) || (cloud?.configured && cloud.pending > 0))
+  const active = local && (!!messageIds || (scans !== null && cloud === null) || (cloud?.configured && (cloud.pending == null || cloud.pending > 0 || !!cloud.error)))
   useEffect(() => {
     if (!active) return
     const controller = new AbortController()
@@ -184,7 +184,7 @@ export default function Dashboard({ user, local = false }) {
       {active && <p className="note" role="status">분석·저장 상태를 확인하고 있어요.</p>}
       {pollError && <p className="note" role="alert">분석·저장 상태를 갱신하지 못했어요. 다시 확인 중이에요. {pollError}</p>}
       {collectionWarning && <p className="note" role="alert">동적 모델을 확인하지 못했어요. 메일 가져오기와 정적 분석은 계속해요. {collectionWarning}</p>}
-      {local && cloud && (!cloud.configured || cloud.pending > 0 || cloud.error) && <p className="note" role={cloud.error || !cloud.configured ? 'alert' : 'status'}>{cloud.configured ? `저장 대기 ${cloud.pending}건` : <><a href="#/settings">결과 저장 설정</a>이 필요해요.</>}{cloud.error && ` · ${cloud.error}`}</p>}
+      {local && cloud && (!cloud.configured || cloud.pending > 0 || cloud.error) && <p className="note" role={cloud.error || !cloud.configured ? 'alert' : 'status'}>{cloud.configured ? cloud.pending == null ? '저장 상태 확인 중' : `저장 대기 ${cloud.pending}건` : <><a href="#/settings">결과 저장 설정</a>이 필요해요.</>}{cloud.error && ` · ${cloud.error}`}</p>}
 
       <section className="stat-strip" aria-label="판정별 메일 수">
         {STRIP.map((k) => {

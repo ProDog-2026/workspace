@@ -68,6 +68,17 @@ test('failed post-collection status read keeps mail visible and retries without 
   assert.doesNotMatch(h.markup(), /저장 대기/)
 })
 
+test('unknown backlog stays visible and polling resumes after worker recovery', async (t) => {
+  const h = await harness(t, [cloud(null, '자동 재시도 중'), cloud(0)])
+  assert.match(h.markup(), /저장 상태 확인 중.*자동 재시도 중/)
+  assert.doesNotMatch(h.markup(), /null건|저장 대기 0건/)
+  await h.tick()
+  assert.doesNotMatch(h.markup(), /저장 상태 확인 중|자동 재시도 중/)
+  const count = h.calls.length
+  await h.tick()
+  assert.equal(h.calls.length, count)
+})
+
 test('load-more recollection also refreshes cloud and restarts backlog polling', async (t) => {
   const h = await harness(t, [cloud(0), cloud(1), cloud(0)], { next: 'next-page' })
   await find(h.render(), (node) => node.type === 'button' && String(node.props.children).includes('더 불러오기')).props.onClick()

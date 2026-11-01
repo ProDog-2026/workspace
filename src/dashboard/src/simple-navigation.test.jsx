@@ -89,7 +89,7 @@ for (const ready of [false, true]) {
     assert.equal(details(tree, '추가 도구'), undefined)
     const disconnect = find(tree, (node) => node.type === 'button' && text(node) === '연동 해제')
     assert.equal(disconnect.props['aria-describedby'], 'disconnect-warning')
-    assert.match(text(find(tree, (node) => node.props?.id === 'disconnect-warning')), /검사 결과가 삭제/)
+    assert.match(text(find(tree, (node) => node.props?.id === 'disconnect-warning')), /이 Gmail의 검사 결과와 본인 동적 실험 기록이 삭제/)
   })
 }
 

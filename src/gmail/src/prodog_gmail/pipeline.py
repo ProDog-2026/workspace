@@ -12,8 +12,8 @@ from cryptography.fernet import InvalidToken
 from fastapi import Query, Request
 from pydantic import BaseModel, ConfigDict, Field
 
-from .errors import ConnectorError
-from .evaluations import target_observed
+from .canary import exposure_observed
+from .errors import ConnectorError, database_busy
 from .experiments import ACTIVE, MAX_MAIL_CHARS, SYSTEM, ExperimentInput, now
 from .sandbox import docker_status
 from .static_detector import StaticDetector
@@ -225,22 +225,40 @@ class MailPipeline:
                 (account_id, mail["id"], input_hash, config_hash, config_hash),
             ).fetchone()
             if existing:
-                previous = json.loads(existing[0])
-                if (
-                    previous["status"] != "cancelled"
-                    or previous.get("collection_session") == data["collection_session"]
-                ):
-                    return self.view(previous)
-                config_hash = hashlib.sha256(
-                    (config_hash + str(data["collection_session"])).encode()
-                ).hexdigest()
-                attempt = conn.execute(
-                    "SELECT data_json FROM analysis_jobs WHERE account_id=? AND message_id=? "
-                    "AND input_hash=? AND config_hash=?",
-                    (account_id, mail["id"], input_hash, config_hash),
-                ).fetchone()
-                if attempt:
-                    return self.view(json.loads(attempt[0]))
+                previous = self.view(json.loads(existing[0]))
+                failures = {"static_error", "error", "failed", "timeout", "step_limit"}
+                if previous["status"] not in failures:
+                    if (
+                        previous["status"] != "cancelled"
+                        or previous.get("collection_session") == data["collection_session"]
+                    ):
+                        return previous
+                    config_hash = hashlib.sha256(
+                        (config_hash + str(data["collection_session"])).encode()
+                    ).hexdigest()
+                    attempt = conn.execute(
+                        "SELECT data_json FROM analysis_jobs WHERE account_id=? AND message_id=? "
+                        "AND input_hash=? "
+                        "AND (config_hash=? OR json_extract(data_json,'$.base_hash')=?) "
+                        "AND json_extract(data_json,'$.collection_session')=? "
+                        "ORDER BY created_at DESC,id DESC LIMIT 1",
+                        (
+                            account_id,
+                            mail["id"],
+                            input_hash,
+                            data["base_hash"],
+                            data["base_hash"],
+                            data["collection_session"],
+                        ),
+                    ).fetchone()
+                    if attempt:
+                        previous = self.view(json.loads(attempt[0]))
+                        if previous["status"] not in failures:
+                            return previous
+                if previous["status"] in failures:
+                    config_hash = hashlib.sha256(
+                        (data["base_hash"] + ":retry:" + data["id"]).encode()
+                    ).hexdigest()
             count = conn.execute(
                 "SELECT COUNT(*) FROM analysis_jobs WHERE payload IS NOT NULL"
             ).fetchone()[0]
@@ -287,7 +305,7 @@ class MailPipeline:
     @staticmethod
     def dynamic_summary(run):
         observed = run.get("observations")
-        positive = target_observed(run)
+        exposure = exposure_observed(run)
         snapshot = observed or {}
         return {
             "id": run["id"],
@@ -295,10 +313,10 @@ class MailPipeline:
             "error": run["error"],
             "observations": {
                 **{k: snapshot.get(k) for k in ("summary_file_present", "complete", "observed_at")},
-                "canary_leaked": True if positive else snapshot.get("canary_leaked"),
+                "canary_leaked": exposure,
                 "canary_present_at_last_snapshot": snapshot.get("canary_leaked"),
             }
-            if observed or positive
+            if observed or exposure is True
             else None,
         }
 
@@ -328,6 +346,8 @@ class MailPipeline:
         )
 
     def account_ready(self, account_id):
+        if self.store.deletion_pending(account_id):
+            return False
         if self.require_owner and not self.store.account_owner(account_id):
             return False
         with self.store.connection() as conn:
@@ -343,6 +363,16 @@ class MailPipeline:
             return False
 
     def finished(self, record):
+        try:
+            self._finished(record)
+        except Exception as exc:
+            if not database_busy(exc):
+                raise
+            asyncio.get_running_loop().call_later(
+                0.1, self.queue.put_nowait, record["source"]["job_id"]
+            )
+
+    def _finished(self, record):
         source = record.get("source")
         if not source or source.get("kind") != "mail_pipeline":
             return
@@ -368,20 +398,37 @@ class MailPipeline:
                 await self.process(job_id)
             except asyncio.CancelledError:
                 raise
-            except Exception:
-                row = self.job(job_id)
-                if row:
-                    data = json.loads(row["data_json"])
-                    data.update(
-                        status="error",
-                        error={"code": "analysis_failed", "message": "메일 분석에 실패했습니다."},
-                    )
-                    self.write(job_id, data, clear=True)
+            except Exception as exc:
+                try:
+                    if database_busy(exc):
+                        raise exc
+                    row = self.job(job_id)
+                    if row:
+                        data = json.loads(row["data_json"])
+                        data.update(
+                            status="error",
+                            error={
+                                "code": "analysis_failed",
+                                "message": "메일 분석에 실패했습니다.",
+                            },
+                        )
+                        self.write(job_id, data, clear=True)
+                except Exception as retry_error:
+                    if not database_busy(retry_error):
+                        raise
+                    await asyncio.sleep(0.1)
+                    self.queue.put_nowait(job_id)
             finally:
                 self.queue.task_done()
 
     async def process(self, job_id):
         row = self.job(job_id)
+        if row:
+            dynamic = json.loads(row["data_json"]).get("dynamic")
+            record = self.runner.records.get(dynamic["id"]) if dynamic else None
+            if record and record["status"] not in ACTIVE:
+                self._finished(record)
+                return
         if not row or json.loads(row["data_json"])["status"] not in STATIC_ACTIVE:
             return
         data = json.loads(row["data_json"])

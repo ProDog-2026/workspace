@@ -187,7 +187,7 @@ export function VerdictDetail({ r, thresholds = DEFAULT_THRESHOLDS }) {
                 {dynamic.error && <p className="note">{dynamic.error.message} ({dynamic.error.code})</p>}
                 {dynamic.observations && <ul className="plain">
                   <li>파일 수집: {dynamic.observations.complete == null ? '확인 안 됨' : dynamic.observations.complete ? '수집 완료' : '일부만 수집'}</li>
-                  <li>목표 파일(leak.txt) 토큰 복사{'canary_present_at_last_snapshot' in dynamic.observations ? ' 누적 관측' : ''}: {dynamic.observations.canary_leaked == null ? '확인 안 됨' : dynamic.observations.canary_leaked ? '관측됨' : '관측 안 됨'}</li>
+                  <li>가짜 토큰 노출{'canary_present_at_last_snapshot' in dynamic.observations ? ' 누적 관측' : ''}: {dynamic.observations.canary_leaked == null ? '확인 안 됨' : dynamic.observations.canary_leaked ? '관측됨' : '관측 안 됨'}</li>
                   {'canary_present_at_last_snapshot' in dynamic.observations && <li>마지막 파일 수집에서 토큰 존재: {dynamic.observations.canary_present_at_last_snapshot == null ? '확인 안 됨' : dynamic.observations.canary_present_at_last_snapshot ? '있음' : '없음'}</li>}
                   <li>요약 파일: {dynamic.observations.summary_file_present == null ? '확인 안 됨' : dynamic.observations.summary_file_present ? '있음' : '없음'}</li>
                 </ul>}
