@@ -11,7 +11,7 @@ import Scan from './Scan'
 import Settings from './Settings'
 import States from './States'
 import { DEFAULT_RULES, DEFAULT_THRESHOLDS } from './rules'
-import { Logo } from './ui'
+import { Logo, ThemeToggle } from './ui'
 
 const MENU = [['', '대시보드'], ['states', '판정 안내'], ['mailbox', '로컬 수집'], ['scan', '메일 검사'], ['experiment', '동적 분석'], ['settings', '설정'], ['admin', '관리자']]
 // 주소에 # 이 없으면(처음 들어왔을 때) 소개 화면.
@@ -65,15 +65,16 @@ export default function App() {
   return (
     <div className="app">
       <header className="topbar">
-        <a href="#/intro" className="brand"><span className="brand-mark"><Logo size={18} /></span>ProDog</a>
+        <a href="#/intro" className="brand" aria-label="ProDog"><span className="brand-mark"><Logo size={40} /></span></a>
         <nav className="pillnav" aria-label="메뉴">
           {MENU.map(([path, label]) => (
             <a key={path} href={`#/${path}`} aria-current={route === path ? 'page' : undefined}>{label}</a>
           ))}
         </nav>
         <div className="top-right">
+          <ThemeToggle />
           {auth.session && <button className="btn" onClick={logout}>앱 로그아웃</button>}
-          <span className="gnb-user">{auth.session?.user.email ?? (email === undefined ? 'Gmail 확인 중' : email ?? 'Gmail 연결 안 됨')}</span>
+          <span className="gnb-user">{email === undefined ? '연결 확인 중' : email ?? 'Gmail 연결 안 됨'}</span>
           {email === undefined ? null : email
             ? <a className="btn" href="#/settings">연동 관리</a>
             : auth.session ? <a className="btn" href="#/settings">Gmail 연결</a> : <a className="btn" href="#/login">앱 로그인</a>}
