@@ -82,6 +82,60 @@ limactl stop prodog-lab
 - 컨테이너·VM 탈출, 하이퍼바이저 취약점, 모든 악성 코드 차단을 보장하지 않는다. 실제 악성 바이너리·VM 탈출 실험은 이 구성의 검증 범위가 아니다.
 - shell은 기존 비루트·읽기 전용 제한을 유지한다. VM root나 호스트 shell 권한을 모델에게 새로 주지 않는다. 정상 과제 불이행·권한 거부·모델 실패를 공격 차단 성공으로 계산하지 않는다.
 
+## 2026-10-30 실제 재검증
+
+기준 checkout은 `feat/jihun`, `624bfe2`다. 기존 Lima 2.2.1의 `prodog-lab`과 `prodog-vm`, 기존 실험 이미지 `sha256:d09c3caa34d53bf6c863bd46d6e034cc30c45902b87a2868e58aa0827cc7175d`를 사용했다. 이미지를 다시 빌드하거나 VM·디스크·context를 교체하지 않았다.
+
+검증 시작 시 VM은 **Stopped**였다. 이 상태에서 실제 `docker_status('prodog-vm')`는 `ready=False`, `context=prodog-vm`을 반환했고 `Sandbox.start()`도 실패했다. Desktop으로 자동 전환되지 않는 것을 확인한 후 `limactl start --tty=false --timeout=10m prodog-lab`으로 기존 VM을 시작했다. 가동 중 VM을 중지하는 장애 주입은 하지 않았다. 시작 실패의 오류 코드는 현재 `unsafe_sandbox_image`여서 엔진 불가와 이미지 문제를 구분하지 못하지만, 메일 전달과 컨테이너 실행은 차단된다.
+
+### 발견하고 수정한 결함
+
+1. `validate_vm()`이 Docker 소켓의 `reverse: true`를 허용했다. 제어 소켓 전달 방향을 검사하도록 수정했다.
+2. 같은 검사가 `copyToHost`를 허용해 “호스트 공유 마운트 없음” 검사만으로는 VM 파일의 호스트 자동 복사를 차단하지 못했다. 자동 복사 설정이 있으면 VM 시작 전에 거부한다.
+3. `check_sandbox()`가 제거 후 `docker inspect`의 모든 실패를 제거 성공으로 취급했다. 이제 해당 컨테이너의 `No such object` 응답이 있어야 제거를 확인하며, 엔진 연결 오류는 검증 실패다.
+
+위 설정 우회는 합성 설정을 주입해 재현했다. 실제 VM에 역방향 소켓이나 호스트 파일 복사 설정을 적용하지 않았다. 새 회귀테스트는 수정 전 각각 `DID NOT RAISE`로 실패했고, 수정 후 `test_vm_setup.py` **6 passed**를 확인했다. 제거 확인 중 엔진 불가는 모의 응답으로 검증했다.
+
+### 실제 VM에서 통과한 경계
+
+| 대상 | 확인한 결과 |
+|---|---|
+| VM → 호스트 | virtiofs/9p 마운트 없음, `/Users` 없음, SSH agent 환경 없음, wildcard TCP listener의 호스트 자동 전달 없음 |
+| 컨테이너 권한 | UID/GID 10001, `CapEff=0`, `NoNewPrivs=1`, `Seccomp=2`, 읽기 전용 루트, Docker·SSH agent 소켓 및 API 키·토큰 환경 미노출 |
+| 네트워크 | loopback 인터페이스만 존재하고 외부 `1.1.1.1:443` 연결 실패 |
+| 자원 설정 | cgroup의 1 CPU·256MiB·64 PID, swap 0, 열린 파일 수 256 확인 |
+| 실제 자원 강제 | 제한된 자식 프로세스 생성 시 `EAGAIN`, `/workspace`·`/tmp` 채우기 시 `ENOSPC`, 320MiB 할당 시 종료 코드 137 및 cgroup `oom_kill` 증가 |
+| 파일 관측 | 합성 메일 읽기·요약 파일·가짜 canary 복사·스냅샷, symlink 불완전 판정과 읽기 불가 디렉터리 오류 |
+| 정리 | 정상 실행·API 취소·출력 초과·명령 시간 초과 뒤 이번 테스트가 만든 컨테이너 제거 확인 |
+
+PID 생성은 최대 80회 시도하며 생성된 자식은 모두 종료·회수한다. 메모리와 임시 파일 부하는 해당 합성 컨테이너의 제한 안에서만 발생한다. API 테스트는 프로세스 내부 TestClient와 임시 DB, 고정 모델 응답을 사용한다. 실제 5173/8765 서버·DB·메일 세션과 공유 Ollama 추론은 사용하지 않았다.
+
+### 재현 명령과 결과
+
+저장소 루트에서 기존 `src/gmail/.venv`로 실행했다. 실제 VM 검증에는 Lima/Docker 소켓 접근 권한이 필요하다. 다음 명령은 기본 Docker context 설정을 변경하지 않는다.
+
+```sh
+src/gmail/.venv/bin/python -m pytest \
+  src/gmail/tests/test_vm_context.py src/gmail/tests/test_vm_setup.py \
+  src/gmail/tests/test_experiments.py -q
+# 41 passed
+
+PRODOG_VM_TESTS=1 PRODOG_DOCKER_TESTS=1 \
+DOCKER_CONTEXT=prodog-vm SANDBOX_DOCKER_CONTEXT=prodog-vm \
+src/gmail/.venv/bin/python -m pytest \
+  src/gmail/tests/test_vm_live.py src/gmail/tests/test_sandbox_live.py -q
+# 6 passed, 1 skipped
+
+src/gmail/.venv/bin/python -m ruff check \
+  src/gmail/scripts/setup_local_vm.py \
+  src/gmail/tests/test_vm_setup.py src/gmail/tests/test_vm_live.py
+# All checks passed!
+```
+
+건너뛴 1개는 별도 신뢰할 수 있는 정적 모델 자료를 요구하는 통합검증이다. Starlette TestClient의 httpx 사용에 관한 기존 deprecation 경고가 1개 발생했다. Ollama 추론, 실제 악성 코드·VM 탈출, Windows와 전체 저장소 테스트는 이번 검증 범위에 포함하지 않았다.
+
+검증 후 VM은 **Running**, 기본 context는 **desktop-linux**로 유지했다. 이번 테스트의 컨테이너는 모두 제거했다. `2026-10-29T07:42:05Z`에 생성된 기존 종료 컨테이너 `prodog-exp-69a05cad5dc84b6884e48b2901b96e86`는 삭제하지 않았다. VM을 멈추려면 공유 작업자와 먼저 조율한다. 준비 스크립트의 `main()`은 실행하지 않아 `.env`와 `data/vm-readiness.json`을 갱신하지 않았다.
+
 ## Windows 팀원
 
 이번 준비 스크립트는 Apple Silicon/VZ용이며 Windows에서 같은 파일을 그대로 실행하지 않는다. 기존 Docker Desktop Linux 컨테이너 방식은 유지된다. 그 방식은 전용 Lima VM을 검증한 것과 동일한 상태가 아니다.

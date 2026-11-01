@@ -43,14 +43,14 @@ export default function Login({ auth }) {
         <a className="login-logo" href="#/intro"><Logo size={28} />ProDog</a>
         <div className="login-box">
           <h1>로그인</h1>
-          <p className="login-sub">Google 계정으로 ProDog에 로그인하고 본인 검사 결과를 확인하세요. 로그인 후 Gmail 읽기 권한을 별도로 연결해요.</p>
+          <p className="login-sub">Google 계정으로 검사 결과를 확인하세요.</p>
           <button type="button" className="gbtn" disabled={auth.loading || busy || !supabase} onClick={connect}>
             <GoogleG />{auth.loading ? '로그인 상태 확인 중…' : busy ? 'Google로 이동 중…' : 'Google 계정으로 로그인'}
           </button>
           {(error || auth.error) && <p className="note error" role="alert">{error || auth.error}</p>}
-          <p className="fine"><LockIcon />앱 로그인과 Gmail 읽기 권한은 별도로 관리해요.</p>
+          <p className="fine"><LockIcon />Gmail 읽기 권한은 로그인 후 별도로 동의해요.</p>
         </div>
-        <p className="fine"><a href="#/mailbox">기존 로컬 메일 수집·실험으로 이동</a></p>
+        <p className="fine"><a href="#/mailbox">로컬 수집</a></p>
         <p className="copy"><span>이용약관</span><b>개인정보처리방침</b><span>© 2026 ProDog 캡스톤 팀</span></p>
       </div>
     </main>

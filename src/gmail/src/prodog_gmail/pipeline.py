@@ -13,7 +13,8 @@ from fastapi import Query, Request
 from pydantic import BaseModel, ConfigDict, Field
 
 from .errors import ConnectorError
-from .experiments import ACTIVE, SYSTEM, ExperimentInput, now
+from .evaluations import target_observed
+from .experiments import ACTIVE, MAX_MAIL_CHARS, SYSTEM, ExperimentInput, now
 from .sandbox import docker_status
 from .static_detector import StaticDetector
 
@@ -33,6 +34,8 @@ class MailPipeline:
         self.store, self.runner = store, runner
         self.detector = StaticDetector(settings)
         self.default_model = settings.ollama_model
+        self.require_owner = settings.supabase_auth_configured
+        self.cloud = None
         self.queue = asyncio.Queue()
         self.worker = None
         self.runner.on_finished = self.finished
@@ -145,6 +148,10 @@ class MailPipeline:
                 "payload=CASE WHEN ? THEN NULL ELSE payload END WHERE id=?",
                 (json.dumps(data, ensure_ascii=False), clear, job_id),
             )
+            if self.cloud:
+                row = conn.execute("SELECT * FROM analysis_jobs WHERE id=?", (job_id,)).fetchone()
+                if row:
+                    self.cloud.mark(row["account_id"], row["message_id"], conn=conn)
 
     def job(self, job_id):
         with self.store.connection() as conn:
@@ -183,7 +190,7 @@ class MailPipeline:
                     "static_ready": detector_state["ready"],
                     "system": SYSTEM,
                     "sandbox_context": self.runner.settings.sandbox_docker_context,
-                    "version": "mail-pipeline-v2-ensemble",
+                    "version": "mail-pipeline-v3-random-canary",
                 },
                 sort_keys=True,
             ).encode()
@@ -209,6 +216,8 @@ class MailPipeline:
         with self.store.connection() as conn:
             conn.execute("BEGIN IMMEDIATE")
             self.store._require_account(conn, account_id)
+            if self.cloud:
+                self.cloud.mark(account_id, mail["id"], conn=conn)
             existing = conn.execute(
                 "SELECT data_json FROM analysis_jobs WHERE account_id=? AND message_id=? "
                 "AND input_hash=? AND (config_hash=? OR json_extract(data_json,'$.base_hash')=?) "
@@ -260,6 +269,9 @@ class MailPipeline:
             run = self.runner.records.get(data["dynamic"]["id"])
             if run:
                 data["dynamic"] = self.dynamic_summary(run)
+                if data["status"] == "cancelled":
+                    data["error"] = run["error"]
+                    return data
                 data["status"] = (
                     "dynamic_queued"
                     if run["status"] == "queued"
@@ -275,15 +287,18 @@ class MailPipeline:
     @staticmethod
     def dynamic_summary(run):
         observed = run.get("observations")
+        positive = target_observed(run)
+        snapshot = observed or {}
         return {
             "id": run["id"],
             "status": run["status"],
             "error": run["error"],
             "observations": {
-                k: observed.get(k)
-                for k in ("canary_leaked", "summary_file_present", "complete", "observed_at")
+                **{k: snapshot.get(k) for k in ("summary_file_present", "complete", "observed_at")},
+                "canary_leaked": True if positive else snapshot.get("canary_leaked"),
+                "canary_present_at_last_snapshot": snapshot.get("canary_leaked"),
             }
-            if observed
+            if observed or positive
             else None,
         }
 
@@ -313,6 +328,8 @@ class MailPipeline:
         )
 
     def account_ready(self, account_id):
+        if self.require_owner and not self.store.account_owner(account_id):
+            return False
         with self.store.connection() as conn:
             account = conn.execute("SELECT mode FROM accounts WHERE id=?", (account_id,)).fetchone()
         if not account:
@@ -334,6 +351,8 @@ class MailPipeline:
             return
         data = json.loads(row["data_json"])
         if data["status"] == "cancelled":
+            data.update(dynamic=self.dynamic_summary(record), error=record["error"])
+            self.write(row["id"], data, clear=True)
             return
         data.update(
             dynamic=self.dynamic_summary(record), status=record["status"], error=record["error"]
@@ -432,6 +451,13 @@ class MailPipeline:
             content = (
                 f"제목: {mail['subject']}\n보낸 사람: {mail['sender']}\n\n{mail['analysis_text']}"
             )
+            if len(content) > MAX_MAIL_CHARS:
+                raise ConnectorError(
+                    "dynamic_input_too_large",
+                    f"동적 분석 입력이 {MAX_MAIL_CHARS:,}자 한도를 초과했습니다. "
+                    "정적 판정은 유지합니다.",
+                    413,
+                )
             spec = ExperimentInput(
                 provider="ollama", model=config["model"], task=TASK, mail=content
             )
@@ -447,10 +473,12 @@ class MailPipeline:
             )
             data.update(status="dynamic_queued", dynamic=self.dynamic_summary(run))
             self.write(job_id, data, clear=True)
-        except (ValueError, ConnectorError):
+        except (ValueError, ConnectorError) as exc:
             data.update(
                 status="error",
-                error={
+                error={"code": exc.code, "message": exc.message}
+                if isinstance(exc, ConnectorError)
+                else {
                     "code": "dynamic_enqueue_failed",
                     "message": "동적 분석 등록 실패. 입력 크기·대기열·모델 설정을 확인하세요.",
                 },
@@ -520,5 +548,6 @@ def register_pipeline(app, csrf, session):
         return {
             "analyses": [
                 result for mid in ids if (result := app.state.pipeline.latest(account_id, mid))
-            ]
+            ],
+            "cloud": app.state.cloud.status(account_id),
         }

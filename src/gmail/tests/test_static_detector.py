@@ -1,7 +1,6 @@
 """Boundary tests need no sklearn; real ML is explicitly opt-in."""
 
 import asyncio
-import hashlib
 import json
 import os
 import shutil
@@ -94,15 +93,16 @@ def test_default_locations_do_not_depend_on_working_directory(monkeypatch, tmp_p
 
 
 def test_missing_python_is_not_ready_but_model_still_has_identity(detector, tmp_path):
+    original_id = detector.status()["model_id"]
     detector.python = tmp_path / "absent-python"
     status = detector.status()
     assert status["ready"] is False
-    assert status["model_id"] == hashlib.sha256(detector.model_path.read_bytes()).hexdigest()
+    assert status["model_id"] == original_id
     assert "Python" in status["message"]
 
 
 def test_fingerprint_cached_until_size_or_mtime_changes(detector, monkeypatch):
-    expected = hashlib.sha256(detector.model_path.read_bytes()).hexdigest()
+    expected = detector.status()["model_id"]
     assert detector.status()["model_id"] == expected
     original = Path.open
 
@@ -118,11 +118,35 @@ def test_fingerprint_cached_until_size_or_mtime_changes(detector, monkeypatch):
     changed = b"x" * old_stat.st_size
     detector.model_path.write_bytes(changed)
     os.utime(detector.model_path, ns=(old_stat.st_atime_ns, old_stat.st_mtime_ns + 1_000_000))
-    assert detector.status()["model_id"] == hashlib.sha256(changed).hexdigest()
+    changed_id = detector.status()["model_id"]
+    assert changed_id != expected
     detector.model_path.write_bytes(b"new longer model")
-    assert detector.status()["model_id"] == hashlib.sha256(b"new longer model").hexdigest()
+    assert detector.status()["model_id"] not in {expected, changed_id}
     detector.model_path.unlink()
     assert detector.status()["model_id"] is None
+
+
+def test_inference_policy_change_invalidates_cached_identity(detector, tmp_path, monkeypatch):
+    policy = tmp_path / "policy.py"
+    policy.write_text("version = 1\n")
+    monkeypatch.setattr(adapter, "POLICY_FILES", (policy,), raising=False)
+    first = detector.status()["model_id"]
+    policy.write_text("version = 22\n")
+    assert detector.status()["model_id"] != first
+
+
+def test_redundant_analysis_text_does_not_reject_a_supported_unicode_body(detector, monkeypatch):
+    body = "😀" * 300_000
+    captured = []
+
+    async def run(payload):
+        captured.append(json.loads(payload))
+        return json.dumps(VALID).encode(), 0
+
+    monkeypatch.setattr(detector, "_run", run)
+    result = asyncio.run(detector.scan({"text_plain": body, "analysis_text": body}))
+    assert result["status"] == "completed"
+    assert captured == [{"text_plain": body}]
 
 
 @pytest.mark.parametrize(
@@ -133,7 +157,8 @@ def test_real_pipes_accept_valid_boundary_results(detector, monkeypatch, score, 
     processes = install_child(
         monkeypatch,
         "import json,sys; mail=json.load(sys.stdin); "
-        f"assert mail == {MAIL!r}; print({json.dumps(output)!r})",
+        f"assert mail == { {k: v for k, v in MAIL.items() if k != 'analysis_text'}!r}; "
+        f"print({json.dumps(output)!r})",
         detector,
     )
     result = asyncio.run(detector.scan(MAIL))

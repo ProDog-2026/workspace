@@ -58,6 +58,13 @@ def predict_transformer(
     overlap = int(config["window_overlap"])
     suspicious = float(config["suspicious_threshold"])
     danger = float(config["danger_threshold"])
+    if batch_size < 1:
+        raise ValueError("batch_size must be at least 1")
+    max_length = int(config["max_length"])
+    tokenizer = artifact["tokenizer"]
+    content_tokens = max_length - tokenizer.num_special_tokens_to_add(pair=False)
+    if content_tokens < 1:
+        raise ValueError("max_length must leave room for content tokens")
     flattened: list[str] = []
     owners: list[int] = []
     for owner, text in enumerate(texts):
@@ -68,21 +75,34 @@ def predict_transformer(
     scores = [0.0] * len(texts)
     with torch.inference_mode():
         for start in range(0, len(flattened), batch_size):
-            encoded = artifact["tokenizer"](
+            # Keep the character windows used in calibration, including their token tails.
+            encoded = tokenizer(
                 flattened[start : start + batch_size],
                 padding=True,
                 truncation=True,
-                max_length=int(config["max_length"]),
+                max_length=max_length,
+                stride=content_tokens // 2,
+                return_overflowing_tokens=True,
                 return_tensors="pt",
             )
-            encoded = {key: value.to(artifact["device"]) for key, value in encoded.items()}
-            probabilities = torch.softmax(artifact["model"](**encoded).logits, dim=-1)[:, 1]
-            if not torch.isfinite(probabilities).all():
-                raise ValueError("Transformer returned nonfinite probabilities")
-            for owner, probability in zip(
-                owners[start : start + batch_size], probabilities.tolist(), strict=True
-            ):
-                scores[owner] = max(scores[owner], float(probability))
+            window_owners = [
+                owners[start + index]
+                for index in encoded.pop("overflow_to_sample_mapping").tolist()
+            ]
+            for offset in range(0, len(window_owners), batch_size):
+                batch = {
+                    key: value[offset : offset + batch_size].to(artifact["device"])
+                    for key, value in encoded.items()
+                }
+                probabilities = torch.softmax(artifact["model"](**batch).logits, dim=-1)[:, 1]
+                if not torch.isfinite(probabilities).all():
+                    raise ValueError("Transformer returned nonfinite probabilities")
+                for owner, probability in zip(
+                    window_owners[offset : offset + batch_size],
+                    probabilities.tolist(),
+                    strict=True,
+                ):
+                    scores[owner] = max(scores[owner], float(probability))
 
     def verdict(score: float) -> str:
         if score >= danger:
@@ -93,9 +113,9 @@ def predict_transformer(
 
     return [
         {
-            "prompt_injection_probability": round(score, 6),
-            "suspicious_threshold": round(suspicious, 6),
-            "danger_threshold": round(danger, 6),
+            "prompt_injection_probability": score,
+            "suspicious_threshold": suspicious,
+            "danger_threshold": danger,
             "verdict": verdict(score),
         }
         for score in scores

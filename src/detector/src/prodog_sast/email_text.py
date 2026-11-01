@@ -7,7 +7,7 @@ from email.parser import BytesParser
 from html.parser import HTMLParser
 from typing import Any
 
-MAX_PART_CHARS = 200_000
+MAX_PART_CHARS = 300_000
 
 
 class _HTMLTextExtractor(HTMLParser):
@@ -34,10 +34,14 @@ def _html_text(value: str) -> str:
 
 def _decoded_text(part: Message) -> str:
     try:
-        return part.get_content()[:MAX_PART_CHARS]
+        value = part.get_content()
     except (LookupError, UnicodeDecodeError):
         payload = part.get_payload(decode=True) or b""
-        return payload.decode("utf-8", errors="replace")[:MAX_PART_CHARS]
+        value = payload.decode("utf-8", errors="replace")
+    # EmailMessage adds a terminal newline when serializing collector fields.
+    if len(value.removesuffix("\n")) > MAX_PART_CHARS:
+        raise ValueError(f"email text part exceeds the {MAX_PART_CHARS}-character limit")
+    return value
 
 
 def message_to_model_text(message: EmailMessage) -> str:
@@ -83,6 +87,8 @@ def fields_to_model_text(
     sender: str = "",
     reply_to: str = "",
 ) -> str:
+    if len(body_text or "") > MAX_PART_CHARS or len(body_html or "") > MAX_PART_CHARS:
+        raise ValueError(f"email body exceeds the {MAX_PART_CHARS}-character limit")
     message = EmailMessage()
     message["Subject"] = _header_value(subject or "")
     if sender:
@@ -99,9 +105,13 @@ def fields_to_model_text(
 
 def collect_api_to_model_text(mail: Mapping[str, Any]) -> str:
     """Convert the Gmail collector output without retaining the source record."""
+    plain = mail.get("text_plain") or ""
+    html = mail.get("text_html") or ""
+    if not plain and not html:
+        plain = mail.get("analysis_text") or ""
     return fields_to_model_text(
         subject=str(mail.get("subject") or ""),
         sender=str(mail.get("sender") or ""),
-        body_text=str(mail.get("text_plain") or mail.get("analysis_text") or ""),
-        body_html=str(mail.get("text_html") or ""),
+        body_text=str(plain),
+        body_html=str(html),
     )

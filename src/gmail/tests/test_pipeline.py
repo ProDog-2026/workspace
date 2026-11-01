@@ -17,6 +17,126 @@ from prodog_gmail.pipeline import MailPipeline
 BASE = "http://127.0.0.1:8765"
 
 
+def test_dynamic_input_limit_is_specific_and_preserves_static_verdict(configured, monkeypatch):
+    client, calls = configured
+    from prodog_gmail.app import parse_gmail_message
+
+    def large(raw):
+        mail = parse_gmail_message(raw)
+        if mail["id"] == "demo-2":
+            mail["analysis_text"] = "x" * 32_000
+        return mail
+
+    monkeypatch.setattr("prodog_gmail.app.parse_gmail_message", large)
+    assert post(client, "/api/mails?limit=3").status_code == 200
+    result = next(r for r in wait_results(client) if r["gmail_message_id"] == "demo-2")
+    assert result["error"]["code"] == "dynamic_input_too_large"
+    assert result["static"]["verdict"] == "danger"
+    assert not calls["dynamic"]
+
+
+def test_dynamic_cleanup_barrier_reason_is_not_hidden_by_generic_enqueue_error(
+    configured, monkeypatch
+):
+    client, _ = configured
+
+    def blocked(*args, **kwargs):
+        raise ConnectorError("cleanup_blocked", "이전 환경 제거를 확인하세요.", 503)
+
+    monkeypatch.setattr(client.app.state.experiments, "enqueue", blocked)
+    assert post(client, "/api/mails?limit=3").status_code == 200
+    result = next(r for r in wait_results(client) if r["gmail_message_id"] == "demo-2")
+    assert result["error"]["code"] == "cleanup_blocked"
+    assert result["static"]["verdict"] == "danger"
+
+
+def test_ollama_outage_does_not_block_collection_or_static_results(configured, monkeypatch):
+    client, calls = configured
+
+    async def unavailable(*_):
+        raise ConnectorError("ollama_unavailable", "Ollama 실행 상태를 확인하세요.", 503)
+
+    monkeypatch.setattr(MailPipeline, "validate_model", unavailable)
+    response = post(client, "/api/mails?limit=3")
+    assert response.status_code == 200
+    assert response.json()["analysis_warning"]["code"] == "ollama_unavailable"
+    results = wait_results(client)
+    assert len(calls["static"]) == 3
+    assert all(r["static"]["status"] == "completed" for r in results)
+
+
+def test_cached_collection_still_delivers_results_to_cloud(configured, monkeypatch):
+    client, calls = configured
+    marked = []
+    original = client.app.state.cloud.mark
+
+    def mark(account_id, message_id, **kwargs):
+        marked.append(message_id)
+        return original(account_id, message_id, **kwargs)
+
+    monkeypatch.setattr(client.app.state.cloud, "mark", mark)
+    assert post(client, "/api/mails?limit=3").status_code == 200
+    wait_results(client)
+    before = len(marked)
+    assert post(client, "/api/mails?limit=3").status_code == 200
+    assert len(marked) == before + 3
+    assert len(calls["static"]) == 3
+
+
+def test_analysis_status_exposes_only_current_account_cloud_queue(configured):
+    client, _ = configured
+    response = client.get("/api/analysis")
+    assert response.status_code == 200
+    assert response.json() == {
+        "analyses": [],
+        "cloud": {"configured": False, "pending": 0, "error": None},
+    }
+
+
+def test_failed_collected_mail_is_persisted_and_marked_for_cloud(configured, monkeypatch):
+    client, _ = configured
+
+    def too_large(raw):
+        raise ConnectorError("message_too_large", "메일 크기 제한을 초과했습니다.", 413)
+
+    monkeypatch.setattr("prodog_gmail.app.parse_gmail_message", too_large)
+    marked = []
+    original = client.app.state.cloud.mark
+
+    def mark(account_id, message_id, **kwargs):
+        marked.append(message_id)
+        return original(account_id, message_id, **kwargs)
+
+    monkeypatch.setattr(client.app.state.cloud, "mark", mark)
+    response = post(client, "/api/mails?limit=1")
+    assert response.status_code == 200
+    assert response.json()["messages"][0]["body_hash"] is None
+    with client.app.state.store.connection() as conn:
+        row = conn.execute("SELECT metadata_json FROM mails").fetchone()
+    assert row is not None
+    assert json.loads(row[0])["warnings"] == ["message_too_large"]
+    assert marked == ["demo-1"]
+
+
+def test_failed_mail_metadata_rolls_back_when_outbox_registration_is_interrupted(
+    configured, monkeypatch
+):
+    client, _ = configured
+
+    def unavailable(_):
+        raise ConnectorError("message_too_large", "합성 수집 실패", 413)
+
+    def interrupted(*args, **kwargs):
+        raise RuntimeError("synthetic interruption")
+
+    monkeypatch.setattr("prodog_gmail.app.parse_gmail_message", unavailable)
+    monkeypatch.setattr(client.app.state.cloud, "mark", interrupted)
+    with pytest.raises(RuntimeError, match="synthetic interruption"):
+        post(client, "/api/mails?limit=1")
+    with client.app.state.store.connection() as conn:
+        assert conn.execute("SELECT COUNT(*) FROM mails").fetchone()[0] == 0
+
+
 def test_post_collection_does_not_run_legacy_detector_twice(configured, monkeypatch):
     client, calls = configured
 

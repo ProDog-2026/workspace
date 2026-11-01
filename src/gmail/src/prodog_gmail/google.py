@@ -188,37 +188,44 @@ class GoogleClient:
     async def access_token(self, account_id: str, rejected: str | None = None) -> str:
         lock = self._locks.setdefault(account_id, asyncio.Lock())
         async with lock:
-            bundle = self.store.tokens(account_id)
-            if not bundle:
-                raise ConnectorError("reconnect_required", "Google 계정을 연결해 주세요.", 401)
-            if bundle.get("needs_reconnect"):
-                raise ConnectorError("reconnect_required", "Google 계정을 다시 연결해 주세요.", 401)
-            # If another coroutine refreshed the rejected token, reuse its new result.
-            if bundle["expires_at"] > time.time() + 60 and bundle["access_token"] != rejected:
-                return bundle["access_token"]
-            try:
-                response = await self._json(
-                    "POST",
-                    TOKEN_URL,
-                    max_bytes=65536,
-                    data={
-                        "client_id": self.settings.google_client_id,
-                        "client_secret": self.settings.google_client_secret.get_secret_value(),
-                        "grant_type": "refresh_token",
-                        "refresh_token": bundle["refresh_token"],
-                    },
-                )
-            except ConnectorError as exc:
-                if exc.code == "reconnect_required":
-                    self.store.invalidate_tokens(account_id)
-                raise
-            updated = self.token_bundle(response, bundle)
-            self.store.save_tokens(account_id, updated)
-            return updated["access_token"]
+            while True:
+                bundle = self.store.tokens(account_id)
+                if not bundle:
+                    raise ConnectorError("reconnect_required", "Google 계정을 연결해 주세요.", 401)
+                if bundle.get("needs_reconnect"):
+                    raise ConnectorError(
+                        "reconnect_required", "Google 계정을 다시 연결해 주세요.", 401
+                    )
+                # If another coroutine refreshed the rejected token, reuse its new result.
+                if bundle["expires_at"] > time.time() + 60 and bundle["access_token"] != rejected:
+                    return bundle["access_token"]
+                try:
+                    response = await self._json(
+                        "POST",
+                        TOKEN_URL,
+                        max_bytes=65536,
+                        data={
+                            "client_id": self.settings.google_client_id,
+                            "client_secret": self.settings.google_client_secret.get_secret_value(),
+                            "grant_type": "refresh_token",
+                            "refresh_token": bundle["refresh_token"],
+                        },
+                    )
+                except ConnectorError as exc:
+                    if exc.code == "reconnect_required" and not self.store.invalidate_tokens(
+                        account_id, expected=bundle
+                    ):
+                        continue
+                    raise
+                updated = self.token_bundle(response, bundle)
+                # OAuth callbacks can replace the grant while the refresh is in flight.
+                if self.store.save_tokens(account_id, updated, expected=bundle):
+                    return updated["access_token"]
 
     async def gmail(self, account_id: str, path: str, params: dict | None = None) -> dict:
         token = await self.access_token(account_id)
         for attempt in range(2):
+            bundle = self.store.tokens(account_id)
             try:
                 return await self._json(
                     "GET",
@@ -227,8 +234,13 @@ class GoogleClient:
                     headers={"Authorization": "Bearer " + token},
                 )
             except ConnectorError as exc:
-                if exc.code == "reconnect_required" and attempt:
-                    self.store.invalidate_tokens(account_id)
+                if (
+                    exc.code == "reconnect_required"
+                    and attempt
+                    and bundle
+                    and bundle["access_token"] == token
+                ):
+                    self.store.invalidate_tokens(account_id, expected=bundle)
                 if exc.code != "reconnect_required" or attempt:
                     raise
                 token = await self.access_token(account_id, rejected=token)

@@ -27,6 +27,8 @@ def validate_vm(config, directory):
     """Reject unsafe existing instances instead of silently reusing or erasing them."""
     if config.get("vmType") != "vz" or config.get("mounts"):
         raise ValueError("전용 VZ VM에 공유 폴더가 없어야 합니다.")
+    if config.get("copyToHost"):
+        raise ValueError("VM 파일을 호스트로 자동 복사하면 안 됩니다.")
     if config.get("cpus") != 2 or config.get("memory") != "2GiB":
         raise ValueError("VM 자원을 2 CPU, 2GiB로 설정하세요.")
     ssh = config.get("ssh", {})
@@ -36,8 +38,10 @@ def validate_vm(config, directory):
         raise ValueError("호스트 프록시 환경과 DNS 전달을 끄세요.")
     forwards = config.get("portForwards", [])
     sockets = [p for p in forwards if p.get("guestSocket")]
-    if len(sockets) != 1 or not re.fullmatch(
-        r"/run/user/[0-9]+/docker.sock", sockets[0]["guestSocket"]
+    if (
+        len(sockets) != 1
+        or sockets[0].get("reverse")
+        or not re.fullmatch(r"/run/user/[0-9]+/docker.sock", sockets[0]["guestSocket"])
     ):
         raise ValueError("VM Docker 제어 소켓 하나만 전달해야 합니다.")
     endpoint = "unix://" + str(directory / "sock" / "docker.sock")
@@ -98,8 +102,8 @@ async def check_sandbox():
         finally:
             await box.remove()
     inspection = await docker("inspect", box.name, context=CONTEXT)
-    if inspection["exit_code"] == 0:
-        raise RuntimeError("실험 컨테이너가 제거되지 않았습니다.")
+    if inspection["exit_code"] == 0 or f"No such object: {box.name}" not in inspection["stderr"]:
+        raise RuntimeError("실험 컨테이너 제거를 확인하지 못했습니다.")
     return {
         "image_id": image_id,
         "non_root": True,

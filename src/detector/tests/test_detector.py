@@ -2,6 +2,7 @@ import json
 from email.message import EmailMessage
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import Mock
 
 import numpy as np
 import pytest
@@ -50,6 +51,8 @@ def test_combined_verdict_uses_the_more_severe_detector_result() -> None:
 
 def test_transformer_nonfinite_logits_are_an_error_not_safe() -> None:
     torch = pytest.importorskip("torch")
+    tokenizer = Mock(return_value={"overflow_to_sample_mapping": torch.tensor([0])})
+    tokenizer.num_special_tokens_to_add.return_value = 2
     artifact = {
         "config": {
             "window_chars": 1000,
@@ -58,7 +61,7 @@ def test_transformer_nonfinite_logits_are_an_error_not_safe() -> None:
             "suspicious_threshold": 0.9,
             "danger_threshold": 0.95,
         },
-        "tokenizer": lambda *args, **kwargs: {},
+        "tokenizer": tokenizer,
         "model": lambda **kwargs: SimpleNamespace(logits=torch.tensor([[float("nan"), 1.0]])),
         "device": "cpu",
     }
@@ -173,8 +176,37 @@ def test_prediction_has_three_verdict_levels_and_supports_old_artifacts() -> Non
         "suspicious",
         "danger",
     ]
-    assert results[0]["suspicious_threshold"] == 0.040019
+    assert results[0]["suspicious_threshold"] == 0.0400186634741522
     assert results[0]["danger_threshold"] == 0.1
+
+
+@pytest.mark.parametrize(
+    ("score", "suspicious", "danger", "verdict"),
+    [
+        (0.0499996, 0.05, 0.8, "safe"),
+        (0.7999996, 0.05, 0.8, "suspicious"),
+        (0.5000001, 0.5, 0.5000002, "suspicious"),
+        (0.5000002, 0.5, 0.5000002, "danger"),
+    ],
+)
+def test_prediction_keeps_full_precision_across_json_threshold_boundaries(
+    score, suspicious, danger, verdict
+):
+    artifact = {
+        "pipeline": FixedProbabilityPipeline(),
+        "threshold": danger,
+        "suspicious_threshold": suspicious,
+        "danger_threshold": danger,
+    }
+
+    result = json.loads(json.dumps(predict(artifact, [str(score)])[0]))
+
+    assert result == {
+        "prompt_injection_probability": score,
+        "suspicious_threshold": suspicious,
+        "danger_threshold": danger,
+        "verdict": verdict,
+    }
 
 
 def test_loaded_artifact_caps_the_operational_safe_gate(tmp_path) -> None:

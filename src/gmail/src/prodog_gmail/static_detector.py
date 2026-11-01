@@ -16,6 +16,10 @@ MAX_OUTPUT_BYTES = 32 * 1024
 TIMEOUT_SECONDS = 30
 MAIL_FIELDS = ("subject", "sender", "text_plain", "text_html", "analysis_text")
 SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "scan_collected_mail.py"
+POLICY_FILES = (SCRIPT,) + tuple(
+    SCRIPT.parents[2] / "detector/src/prodog_sast" / name
+    for name in ("email_text.py", "model.py", "transformer.py")
+)
 SETUP_MESSAGE = (
     "정적 분석 준비가 필요합니다. 탐지기 전용 Python 3.12 환경에 "
     "scikit-learn 1.6·PyTorch·Transformers와 팀 학습 모델을 준비하고 "
@@ -149,6 +153,7 @@ class StaticDetector:
             paths = [self.model_path]
             if ensemble:
                 paths.extend(directory / name for name in TRANSFORMER_FILES)
+            paths.extend(POLICY_FILES)
             stats = [path.stat() for path in paths]
             if not all(path.is_file() for path in paths):
                 raise OSError
@@ -158,9 +163,8 @@ class StaticDetector:
             )
             if key != self._fingerprint_key:
                 digest = hashlib.sha256()
-                for path in paths:
-                    if ensemble:
-                        digest.update(str(path.relative_to(self.model_path.parent)).encode())
+                for path, stat in zip(paths, stats, strict=True):
+                    digest.update(f"{path.name}:{stat.st_size}:".encode())
                     with path.open("rb") as source:
                         while chunk := source.read(1024 * 1024):
                             digest.update(chunk)
@@ -253,6 +257,9 @@ class StaticDetector:
             fields = {key: mail.get(key) for key in MAIL_FIELDS if key in mail}
             if any(value is not None and not isinstance(value, str) for value in fields.values()):
                 raise ValueError
+            # The converter uses analysis_text only when both body forms are absent.
+            if fields.get("text_plain") or fields.get("text_html"):
+                fields.pop("analysis_text", None)
             payload = json.dumps(fields, ensure_ascii=False, allow_nan=False).encode("utf-8")
         except (TypeError, ValueError, UnicodeError):
             return error("static_invalid_input")

@@ -5,6 +5,7 @@ import httpx
 import pytest
 from cryptography.fernet import Fernet
 from fastapi.testclient import TestClient
+from test_dynamic_admission import ready
 
 from prodog_gmail.app import create_app
 from prodog_gmail.config import Settings
@@ -33,7 +34,11 @@ def test_experiments_require_session_csrf_and_do_not_need_gmail(settings, monkey
     async def fake_execute(self, record):
         await asyncio.Event().wait()
 
+    async def metadata_ready(*args):
+        return ready()
+
     monkeypatch.setattr("prodog_gmail.experiments.Experiments.execute", fake_execute)
+    monkeypatch.setattr("prodog_gmail.experiments.check_readiness", metadata_ready)
     with TestClient(create_app(settings), base_url=BASE) as client:
         assert client.get("/api/experiments").status_code == 401
         assert client.post("/api/experiments", json={}).status_code == 403
@@ -148,6 +153,50 @@ def test_queued_auto_run_rejects_replaced_ollama_weights(settings, monkeypatch):
             await runner.active
             assert record["status"] == "error"
             assert record["error"]["code"] == "ollama_model_changed"
+        finally:
+            await runner.close()
+
+    asyncio.run(check())
+
+
+def test_legacy_queued_run_uses_defaults_for_new_optional_checks(settings, monkeypatch):
+    async def check():
+        class SyntheticSandbox:
+            def __init__(self, _):
+                pass
+
+            async def start(self, _):
+                return "synthetic-image"
+
+            async def snapshot(self):
+                return {"files": [], "complete": True}
+
+            async def remove(self):
+                pass
+
+        async def reply(*_):
+            return {"message": {"role": "assistant", "content": "synthetic done"}}
+
+        from pydantic import SecretStr
+
+        settings.groq_api_key = SecretStr("synthetic-only")
+        monkeypatch.setattr("prodog_gmail.experiments.Sandbox", SyntheticSandbox)
+        monkeypatch.setattr("prodog_gmail.experiments.model_reply", reply)
+        runner = Experiments(settings)
+        await runner.open()
+        monkeypatch.setattr(runner, "_schedule", lambda: None)
+        try:
+            record = runner.enqueue(
+                ExperimentInput(
+                    provider="groq", model="test", task="요약", mail="합성", allow_remote=True
+                ),
+                "synthetic-owner",
+            )
+            del record["result_checks"]
+            await runner.execute(record)
+            assert record["status"] == "completed", record["error"]
+            assert any(event["type"] == "model_input" for event in record["events"])
+            assert runner.public(record)["quality_checks"]["task_deviation"] is None
         finally:
             await runner.close()
 

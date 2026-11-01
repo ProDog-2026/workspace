@@ -128,7 +128,8 @@ def test_text_budget_is_shared_between_alternatives():
     mime.set_content("p" * (MAX_TEXT_CHARS - 10))
     mime.add_alternative("<p>" + "h" * 100 + "</p>", subtype="html")
     parsed = parse_gmail_message(gmail(mime.as_bytes()))
-    assert len(parsed["text_plain"]) + len(parsed["text_html"]) == MAX_TEXT_CHARS
+    assert len(parsed["text_plain"]) + 1 + len(parsed["text_html"]) == MAX_TEXT_CHARS
+    assert parsed["analysis_text"] == parsed["text_plain"] + "\n" + parsed["text_html"]
     assert len(parsed["analysis_text"]) == MAX_TEXT_CHARS
     assert parsed["truncated"] is True
     assert "text_size_limit_exceeded" in parsed["warnings"]

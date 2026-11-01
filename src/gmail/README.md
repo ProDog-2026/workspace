@@ -1,5 +1,8 @@
 # ProDog Gmail 메일 연동 모듈
 
+팀원이 pull받은 뒤 준비할 항목은 [팀 실행 안내](../../docs/team-setup.md),
+Gmail 없이 정상/공격 예시를 비교하는 방법은 [합성 메일 쌍 평가](docs/synthetic-evaluation.md)를 따른다.
+
 수집 후 정적 분류와 Ollama 동적 분석을 자동으로 연결하려면
 [자동 분석 실행 안내](docs/automatic-analysis.md)를 따른다. 메일별 실행 버튼은 필요 없으며
 설정에서 모델과 자동 분석 사용을 한 번 저장한다. 실제 학습 모델은 별도 준비가 필요하다.
@@ -81,7 +84,7 @@ uv run python scripts/configure_google.py 'C:\경로\client_secret.json'
 | 본문 추출 | Gmail RAW, 한글 charset, MIME plain/HTML, 숨김 문구·주석 보존 |
 | 후속 분석 입력 | `trust=UNTRUSTED`, `analysis_text`, 원문 본문 SHA-256, 불완전 수집 경고 |
 | 토큰 | 서버에서 암호화 저장·자동 갱신, 갱신 실패 시 재연결, 프런트엔드 미노출 |
-| 로컬 DB | 계정별 메타데이터 upsert. 본문·RAW·첨부 내용은 저장하지 않음 |
+| 로컬 DB | 계정별 메타데이터 upsert에는 본문 없음. 자동 분석 본문은 암호화 대기 payload/실행 로그에 저장될 수 있음 |
 | 연결 해제 | Google revoke 성공 후 로컬 토큰·계정·메일 메타데이터·세션 삭제 |
 | 표시 | 외부 이미지 요청과 HTML 실행 없이 텍스트로 표시 |
 
@@ -98,8 +101,14 @@ uv run python scripts/configure_google.py 'C:\경로\client_secret.json'
 분석기는 `warnings`, `truncated`, `attachments`도 함께 받아 수집 누락과 분석 결과를 구분해야 한다.
 
 현재 모듈은 독립 실행 검증을 위해 SQLite와 로컬 세션을 사용한다.
-팀의 Supabase Auth·DB 구현을 대체하는 최종 구조는 아니다.
-공유 서버로 옮길 때 앱 사용자 ID에 Gmail 연결을 묶고 RLS·HTTPS·키 관리·공유 세션을 적용해야 한다.
+Supabase 설정 시 access token을 서버에서 검증하고 Gmail OAuth 연결을 해당 user_id에 귀속한다.
+POST 수집·정적/동적 결과는 durable outbox로 Supabase에 자동 저장하며 브라우저는 SELECT만 한다.
+
+인증 헤더 없이 기존 사용자 세션을 조회하면 세션·OAuth·작업을 변경하지 않고 401을 반환한다.
+로그아웃은 현재 사용자의 Gmail 작업과 합성 평가를 중지하며 다른 사용자의 작업은 유지한다.
+Gmail 재연결과 토큰 갱신이 겹쳐도 오래된 응답은 새 연결을 덮어쓰거나 무효화하지 않는다.
+설정은 `.env.example`, 흐름은 [현재 아키텍처](../../arch/architecture.md)를 따른다.
+공유 서버로 옮길 때 HTTPS·키 관리·공유 세션 배포를 별도로 구성해야 한다.
 개발용 서버는 루프백에만 바인딩한다.
 
 ## 검증

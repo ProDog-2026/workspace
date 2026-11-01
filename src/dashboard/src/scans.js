@@ -8,6 +8,22 @@ export const stateOf = (r) =>
 const VERDICTS = ['safe', 'suspicious', 'danger']
 const strings = (value) => Array.isArray(value) ? value.filter((v) => typeof v === 'string') : []
 const score = (value) => Number.isFinite(value) && value >= 0 && value <= 100 ? value : null
+const probabilityScore = (value) => Number.isFinite(value) ? score(value * 100) : null
+export const DETECTOR_NAMES = { tfidf: '기존 ML(해시 특징)', lexical: '기존 ML(해시 특징)', transformer: 'Transformer' }
+const thresholdsOf = (r) => Number.isFinite(r?.suspicious_threshold) && Number.isFinite(r?.danger_threshold)
+  && 0 <= r.suspicious_threshold && r.suspicious_threshold < r.danger_threshold && r.danger_threshold <= 1
+  ? { suspicious: r.suspicious_threshold * 100, danger: r.danger_threshold * 100 } : null
+
+export function detectorFields(result) {
+  return {
+    static_thresholds: thresholdsOf(result),
+    static_detectors: ['tfidf', 'transformer'].filter((id) => result?.detectors?.[id]).map((id) => {
+      const d = result.detectors[id]
+      return { id, label: DETECTOR_NAMES[id], score: probabilityScore(d.score),
+        verdict: VERDICTS.includes(d.verdict) ? d.verdict : null, thresholds: thresholdsOf(d) }
+    }),
+  }
+}
 
 // VITE 변수는 공개된다. 잘못 붙여 넣은 서버 키를 클라이언트에 사용하지 않는다.
 export function browserKey(key) {
@@ -19,10 +35,14 @@ export function scanRow(row) {
   const verdict = VERDICTS.includes(row.verdict) ? row.verdict : null
   const status = ['ok', 'incomplete', 'failed'].includes(row.status) ? row.status : 'failed'
   const missing = strings(row.missing_parts)
+  const result = row.analysis?.static
+  const pipelineScore = result?.status === 'completed' && result.verdict === verdict
+    ? probabilityScore(result.score) : null
   return {
     ...row, verdict, status,
+    ...detectorFields(row.analysis?.static),
     pending: verdict === null && status !== 'failed',
-    static_score: score(row.static_score), llm_score: score(row.llm_score), final_score: score(row.final_score),
+    static_score: pipelineScore ?? score(row.static_score), llm_score: score(row.llm_score), final_score: pipelineScore ?? score(row.final_score),
     missing_parts: status === 'incomplete' && !missing.length ? ['메일 일부를 분석하지 못했어요. 빠진 부분의 안전 여부는 알 수 없어요.'] : missing,
     types: strings(row.types),
     evidence: Array.isArray(row.evidence) ? row.evidence.filter((e) => e && typeof e.snippet === 'string').map((e) => ({
@@ -35,7 +55,7 @@ export function scanRow(row) {
 
 export async function readScans(client, userId, offset = 0, signal) {
   if (!userId) throw new Error('로그인 후 검사 결과를 조회하세요.')
-  let query = client.from('scans').select('id,user_id,gmail_message_id,sender,subject,received_at,scanned_at,status,status_detail,missing_parts,static_score,llm_score,final_score,verdict,types,evidence,llm_reason')
+  let query = client.from('scans').select('id,user_id,gmail_message_id,sender,subject,received_at,scanned_at,status,status_detail,missing_parts,static_score,llm_score,final_score,verdict,types,evidence,llm_reason,analysis')
     .eq('user_id', userId).order('received_at', { ascending: false }).order('id', { ascending: false })
     .range(offset, offset + SCAN_PAGE_SIZE - 1)
   if (signal) query = query.abortSignal(signal)

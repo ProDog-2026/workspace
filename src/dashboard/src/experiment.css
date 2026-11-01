@@ -1,5 +1,18 @@
 .experiment { display: grid; gap: 20px; min-width: 0; }
-.experiment-grid { display: grid; grid-template-columns: minmax(240px, 0.7fr) minmax(0, 1.6fr); gap: 20px; align-items: start; }
+.mail-test-form { display: grid; gap: 16px; min-width: 0; }
+.mail-test-heading { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; }
+.mail-test-heading > label { font-size: 19px; font-weight: 600; }
+.mail-test-form > textarea { display: block; width: 100%; min-height: 260px; resize: vertical; padding: 16px; line-height: 1.75; }
+.mail-test-form .note { margin: 0; }
+.mail-test-option-fields { display: grid; gap: 14px; }
+.mail-test-option-fields label { display: grid; gap: 6px; min-width: 0; }
+.mail-test-option-fields textarea, .mail-test-option-fields select { width: 100%; min-width: 0; padding: 10px; }
+.mail-test-option-fields textarea { resize: vertical; }
+.mail-test-start { min-height: 44px; min-width: 160px; justify-content: center; }
+.mail-test-answer { min-width: 0; border: 1px solid var(--border); border-radius: var(--r-box); background: var(--surface-2); padding: 18px; }
+.mail-test-response { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.8; max-height: 400px; overflow: auto; margin-top: 12px; }
+.mail-test-copy { display: flex; flex-wrap: wrap; gap: 10px; align-items: baseline; }
+.mail-test-copy span { color: var(--ink-2); }
 .experiment-detail { display: grid; gap: 12px; }
 .experiment-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .experiment details { border: 1px solid var(--border); border-radius: var(--r-ctl); padding: 12px; overflow-wrap: anywhere; min-width: 0; }
@@ -20,5 +33,19 @@
 .experiment-log li { min-width: 0; border-bottom: 1px solid var(--border); padding-bottom: 12px; }
 .experiment-changes { display: grid; gap: 6px; overflow-wrap: anywhere; }
 .experiment .error { overflow-wrap: anywhere; }
-@media (max-width: 1000px) { .experiment-grid { grid-template-columns: minmax(0, 1fr); } .experiment-history { max-height: 300px; } }
-@media (max-width: 560px) { .experiment .panel-head { flex-wrap: wrap; gap: 10px; } .experiment-observations { grid-template-columns: minmax(0, 1fr); } }
+.evaluation-fields { min-width: 0; padding: 0; margin: 0; border: 0; }
+.evaluation-fields > legend { margin-bottom: 12px; font-weight: 600; }
+.evaluation-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-bottom: 12px; }
+.evaluation-form-grid label { display: grid; align-content: start; gap: 6px; min-width: 0; }
+.evaluation-form-grid input:not([type='number']), .evaluation-form-grid select, .evaluation-form-grid textarea { width: 100%; min-width: 0; }
+.evaluation-form-grid input:not([type='number']), .evaluation-form-grid textarea { padding: 9px 10px; }
+.evaluation-form-grid textarea { resize: vertical; font: 12px/1.65 var(--mono); }
+.evaluation-wide { grid-column: 1 / -1; }
+.evaluation-fields > .btn { margin-top: 12px; }
+.evaluation-table { position: relative; overflow-x: auto; min-width: 0; }
+.evaluation-table table { width: 100%; border-collapse: collapse; font-size: 12px; text-align: left; }
+.evaluation-table th, .evaluation-table td { padding: 10px; border-bottom: 1px solid var(--border); vertical-align: top; overflow-wrap: anywhere; }
+.evaluation-table small { display: block; margin-top: 4px; }
+.evaluation .experiment-actions select { min-width: 0; max-width: 100%; }
+@media (max-width: 1000px) { .experiment-history { max-height: 300px; } }
+@media (max-width: 560px) { .experiment .panel-head { flex-wrap: wrap; gap: 10px; } .experiment-observations, .evaluation-form-grid { grid-template-columns: minmax(0, 1fr); } .mail-test-start { width: 100%; } .mail-test-form > textarea { min-height: 230px; } }

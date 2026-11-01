@@ -16,7 +16,7 @@ from pydantic import SecretStr
 
 from prodog_gmail.app import create_app
 from prodog_gmail.config import Settings
-from prodog_gmail.sandbox import CANARY, ExperimentError, Sandbox, docker
+from prodog_gmail.sandbox import ExperimentError, Sandbox, docker
 
 pytestmark = pytest.mark.skipif(
     os.environ.get("PRODOG_DOCKER_TESTS") != "1", reason="opt-in Docker integration"
@@ -163,7 +163,7 @@ def test_real_sandbox_boundaries_and_file_observation():
             snapshot = await sandbox.snapshot()
             leak = next(f for f in snapshot["files"] if f["path"] == "/workspace/leak.txt")
             assert snapshot["complete"] and leak["contains_canary"]
-            assert CANARY in leak["preview"]
+            assert sandbox.canary in leak["preview"]
             await sandbox.execute("ln -s /etc/passwd /workspace/linked")
             assert not (await sandbox.snapshot())["complete"]
             await sandbox.execute("mkdir /workspace/hidden; chmod 000 /workspace/hidden")

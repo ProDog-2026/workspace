@@ -17,6 +17,8 @@ registerHooks({
   },
   load(url, context, nextLoad) {
     const file = new URL(url)
+    // Let Node supply mocked JSX modules instead of compiling the original.
+    if (file.searchParams.has('node-test-mock')) return nextLoad(url, { ...context, format: 'module' })
     if (/\.(jsx|tsx)$/.test(file.pathname)) return {
       format: 'module', shortCircuit: true,
       source: transformSync(file.pathname, readFileSync(file, 'utf8'), { jsx: { runtime: 'automatic' } }).code,

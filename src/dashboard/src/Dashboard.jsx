@@ -41,6 +41,8 @@ export default function Dashboard({ user, local = false }) {
   const [next, setNext] = useState(null) // Gmail 다음 페이지 토큰. 없으면 끝
   const [more, setMore] = useState({ busy: false, error: '' })
   const [pollError, setPollError] = useState('')
+  const [collectionWarning, setCollectionWarning] = useState('')
+  const [cloud, setCloud] = useState(null)
   const lifetime = useRef(null)
   const loadingMore = useRef(false)
 
@@ -58,12 +60,22 @@ export default function Dashboard({ user, local = false }) {
     if (!session.csrf_token) throw new Error('세션을 확인하지 못했어요. 다시 접속해 주세요.')
     const d = await gmail(`/api/mails?limit=${LIMIT}` + (token ? `&page_token=${encodeURIComponent(token)}` : ''), session.csrf_token, undefined, { signal })
     if (signal.aborted) return
+    setCloud(null)
+    setCollectionWarning(d.analysis_warning?.message ?? '')
     setScans((prev) => {
       const rows = new Map((prev ?? []).map((r) => [r.gmail_message_id, r]))
       d.messages.forEach((m) => rows.set(m.id, toRow(m)))
       return [...rows.values()]
     })
     setNext(d.next_page_token)
+    try {
+      const status = await gmail('/api/analysis', undefined, undefined, { signal })
+      if (signal.aborted) return
+      setCloud(status.cloud)
+      setPollError('')
+    } catch (e) {
+      if (!signal.aborted) setPollError(e.message)
+    }
   }
   useEffect(() => {
     const controller = new AbortController()
@@ -74,23 +86,27 @@ export default function Dashboard({ user, local = false }) {
     setSelected(null)
     setMore({ busy: false, error: '' })
     setPollError('')
+    setCollectionWarning('')
+    setCloud(null)
     load(undefined, controller.signal).catch((e) => { if (!controller.signal.aborted) setError(e) })
     return () => controller.abort()
   }, [local, user?.id, reload])
 
   const messageIds = (scans ?? []).filter((r) => ACTIVE.has(r.analysis?.status)).map((r) => r.gmail_message_id).join(',')
-  const active = local && !!messageIds
+  const active = local && (!!messageIds || (scans !== null && cloud === null) || (cloud?.configured && cloud.pending > 0))
   useEffect(() => {
-    if (!active || !messageIds) return
+    if (!active) return
     const controller = new AbortController()
     const ids = messageIds.split(',')
     const batches = []
     for (let i = 0; i < ids.length; i += POLL_BATCH_SIZE) batches.push(ids.slice(i, i + POLL_BATCH_SIZE).join(','))
+    if (!batches.length) batches.push('')
     let timer
     const poll = async () => {
       try {
         const results = await Promise.all(batches.map((batch) => gmail(`/api/analysis?message_ids=${encodeURIComponent(batch)}`, undefined, undefined, { signal: controller.signal })))
         if (controller.signal.aborted) return
+        setCloud(results[0].cloud)
         const updates = new Map(results.flatMap((data) => data.analyses).map((a) => [a.gmail_message_id, a]))
         setScans((prev) => prev?.map((r) => updates.has(r.gmail_message_id) ? toRow({ ...r.mail, analysis: updates.get(r.gmail_message_id) }) : r) ?? null)
         setPollError('')
@@ -123,7 +139,8 @@ export default function Dashboard({ user, local = false }) {
         <section className="panel"><p className="empty">
           {!error ? '검사 결과를 불러오는 중…'
             : error.code === 'authentication_required'
-              ? <>연결된 Gmail이 없어요. <a href="#/settings">설정</a>에서 Gmail을 연결하세요.</>
+              ? <><a href="#/settings">Gmail을 연결</a>한 뒤 다시 불러오세요.</>
+              : error.code === 'app_auth_required' ? <><a href="#/login">앱에 로그인</a>한 뒤 다시 불러오세요.</>
               : <span role="alert">{error.message}</span>}
         </p>{error && <div className="panel-body"><button className="btn" onClick={() => setReload((v) => v + 1)}>다시 불러오기</button></div>}</section>
       </>
@@ -161,11 +178,13 @@ export default function Dashboard({ user, local = false }) {
       </header>
 
       <p className="note page-note">{local
-        ? <>이 컴퓨터의 Gmail 연결로 메일을 수집하고 정적·동적 분석해요. 결과는 로컬에 저장되며 Supabase 대시보드와 별개예요. <a href="#/settings">자동 분석 설정</a></>
-        : <>Supabase에 저장된 본인 검사 결과를 읽기 전용으로 표시해요. <a href="#/settings">Gmail 연결 관리</a> · <a href="#/mailbox">로컬 메일 수집·분석</a></>}</p>
-      <p className="note">목록·집계·그래프는 현재 불러온 {scans.length}건 기준이에요. 일별 그래프는 받은 날짜 기준 최근 {span}일을 표시해요.</p>
-      {active && <p className="note" role="status">분석 진행 상태를 1초마다 확인하고 있어요.</p>}
-      {pollError && <p className="note" role="alert">분석 상태를 갱신하지 못했어요. 기존 목록을 유지하며 다시 확인해요. {pollError}</p>}
+        ? 'Gmail에서 메일을 가져와 분석해요.'
+        : <a href="#/mailbox">Gmail에서 메일 가져오기</a>}</p>
+      <p className="note">불러온 {scans.length}건 기준 · 일별 그래프는 받은 날짜 기준 최근 {span}일</p>
+      {active && <p className="note" role="status">분석·저장 상태를 확인하고 있어요.</p>}
+      {pollError && <p className="note" role="alert">분석·저장 상태를 갱신하지 못했어요. 다시 확인 중이에요. {pollError}</p>}
+      {collectionWarning && <p className="note" role="alert">동적 모델을 확인하지 못했어요. 메일 가져오기와 정적 분석은 계속해요. {collectionWarning}</p>}
+      {local && cloud && (!cloud.configured || cloud.pending > 0 || cloud.error) && <p className="note" role={cloud.error || !cloud.configured ? 'alert' : 'status'}>{cloud.configured ? `저장 대기 ${cloud.pending}건` : <><a href="#/settings">결과 저장 설정</a>이 필요해요.</>}{cloud.error && ` · ${cloud.error}`}</p>}
 
       <section className="stat-strip" aria-label="판정별 메일 수">
         {STRIP.map((k) => {
@@ -195,7 +214,7 @@ export default function Dashboard({ user, local = false }) {
           <div className="panel-body">
             {typeCounts.length
               ? <TypeBars data={typeCounts} />
-              : <p className="muted">{cur.some((r) => r.analysis?.static) ? '정적 분류기는 숨김 수법별 근거를 제공하지 않아요.' : '아직 수법별 분석 근거가 없어요.'}</p>}
+              : <p className="muted">{cur.some((r) => r.analysis?.static) ? '이 분석은 수법별 근거를 제공하지 않아요.' : '아직 수법별 분석 근거가 없어요.'}</p>}
             <p className="note hb-note">수법별 근거가 제공된 경우에만 집계해요.</p>
           </div>
         </div>
