@@ -116,9 +116,15 @@ def combine_predictions(
             for name, result in (("tfidf", lexical), ("transformer", semantic))
             if result["verdict"] == final_verdict
         ]
+        probability = max(
+            result["prompt_injection_probability"]
+            for result in (lexical, semantic)
+            if result["verdict"] == final_verdict
+        )
         combined.append(
             {
                 "verdict": final_verdict,
+                "prompt_injection_probability": probability,
                 "decided_by": decided_by,
                 "detectors": {"tfidf": lexical, "transformer": semantic},
             }

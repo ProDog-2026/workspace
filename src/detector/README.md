@@ -70,7 +70,9 @@ python -m pip install -e ".[dev,transformer]"
 
 두 모델의 확률은 보정 기준이 서로 달라 숫자를 직접 비교하지 않는다. 각 모델이 자기 임계값으로
 내린 `safe`·`suspicious`·`danger`만 비교한다. 결과에는 두 모델의 점수와 최종 판정을 올린
-모델(`decided_by`)을 함께 남긴다. Transformer는 별도 LLM이나 외부 API를 호출하지 않는다.
+모델(`decided_by`)을 함께 남긴다. 최종 `prompt_injection_probability`는 최종 판정을 만든
+모델의 점수이며, 두 모델이 같은 판정이면 더 높은 점수다. Transformer는 별도 LLM이나 외부
+API를 호출하지 않는다.
 
 Quadrat-IPI v1.0.2 중 이메일 27,160건을 원천으로 사용한다. 같은 원본 메일이 학습과 검증에
 동시에 들어가지 않도록 `host_source + host_id` 단위로 분리하며, 학습은 인젝션 4,935건과

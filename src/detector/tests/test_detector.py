@@ -43,8 +43,19 @@ def test_combined_verdict_uses_the_more_severe_detector_result() -> None:
     result = combine_predictions(tfidf, transformer)[0]
 
     assert result["verdict"] == "danger"
+    assert result["prompt_injection_probability"] == 0.8
     assert result["decided_by"] == ["transformer"]
     assert result["detectors"] == {"tfidf": tfidf[0], "transformer": transformer[0]}
+
+
+def test_combined_probability_uses_the_highest_score_among_tied_deciders() -> None:
+    tfidf = [{"verdict": "danger", "prompt_injection_probability": 0.6}]
+    transformer = [{"verdict": "danger", "prompt_injection_probability": 0.8}]
+
+    result = combine_predictions(tfidf, transformer)[0]
+
+    assert result["prompt_injection_probability"] == 0.8
+    assert result["decided_by"] == ["tfidf", "transformer"]
 
 
 def test_email_serialization_keeps_raw_and_rendered_html() -> None:
