@@ -1,3 +1,5 @@
+import { useState } from 'react'
+
 export const STATES = {
   danger: { label: '위험' },
   suspicious: { label: '의심' },
@@ -87,16 +89,9 @@ export function Badge({ v }) {
   return <span className={`badge ${v}`}><Mark v={v} size={12} />{STATES[v].label}</span>
 }
 
-// ProDog 마크: 귀퉁이 접힌 메일 한 장 + 드러난 줄 하나 + 숨은(점선) 줄 하나
+// ProDog 로고: ProDog-2026 GitHub 조직 프로필 이미지
 export function Logo({ size = 20 }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 20 20" fill="none" aria-hidden="true" focusable="false">
-      <path d="M4 3.5h7.5l4.5 4.5v8.5H4z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
-      <path d="M11.5 3.5V8H16z" fill="#5b8cff" stroke="#5b8cff" strokeWidth="1.6" strokeLinejoin="round" />
-      <path d="M6.75 11h6.5" stroke="currentColor" strokeWidth="1.6" />
-      <path d="M6.75 14h6.5" stroke="#5b8cff" strokeWidth="1.6" strokeDasharray="1.3 1.3" />
-    </svg>
-  )
+  return <img src="/prodog-logo.png" width={size} height={size} alt="" />
 }
 
 export function CloseIcon() {
@@ -104,5 +99,25 @@ export function CloseIcon() {
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden="true" focusable="false">
       <path d="M4 4l8 8M12 4l-8 8" />
     </svg>
+  )
+}
+
+// 라이트/다크 전환. 처음엔 시스템 설정(index.html 이 정함)을 따르고, 누른 뒤로는 선택을 저장
+export function ThemeToggle() {
+  const [theme, setTheme] = useState(() => document.documentElement.dataset.theme)
+  const next = theme === 'dark' ? 'light' : 'dark'
+  const flip = () => {
+    document.documentElement.dataset.theme = next
+    try { localStorage.setItem('theme', next) } catch { /* 저장 못 해도 이번 화면에는 적용됨 */ }
+    setTheme(next)
+  }
+  return (
+    <button type="button" className="btn theme-toggle" onClick={flip} aria-label={next === 'dark' ? '다크 모드로 전환' : '라이트 모드로 전환'}>
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+        {theme === 'dark'
+          ? <><circle cx="8" cy="8" r="3" /><path d="M8 1.5v1.5M8 13v1.5M1.5 8H3M13 8h1.5M3.4 3.4l1 1M11.6 11.6l1 1M12.6 3.4l-1 1M4.4 11.6l-1 1" /></>
+          : <path d="M13.5 9.5A5.5 5.5 0 0 1 6.5 2.5a5.5 5.5 0 1 0 7 7z" />}
+      </svg>
+    </button>
   )
 }
