@@ -118,7 +118,8 @@ python scripts/train_quadrat_transformer.py
 | 내부 test 전체 | 0.805% |
 | 내부 test 중 LLMail | 0.73% |
 | 내부 test 중 BIPIA(홀드아웃 공격 문구 25종) | 34.7% (26/75) |
-| InjecAgent Gmail(최종 외부 테스트) | 15.3% (19/124) |
+| InjecAgent Gmail(최종 외부 테스트) | 0% (0/124, 정상 사례 없음) |
+| KoPI-Bench 한국어 메일 후보 | 0% (0/1,572), 정상 검토율 100% |
 
 모델과 대용량 데이터는 Git에 올리지 않는다. 운영 모델은
 [Notion 모델 파일 페이지](https://app.notion.com/p/40714dd1c3c48153b351f8fd6c01855d)에서 내려받고,
@@ -167,11 +168,28 @@ prodog-sast train `
 python scripts/evaluate_injecagent.py `
   data/vendor/InjecAgent/data `
   --model models/prompt_injection.joblib `
+  --transformer-model models/quadrat-transformer `
   --output reports/injecagent-gmail-metrics.json
 ```
 
 InjecAgent Gmail 124건은 공격 사례만 있어 정상 오탐률을 계산할 수 없다. 내부 test의 정상
 결과와 함께 제시할 때는 서로 다른 평가셋이라는 점을 반드시 명시한다.
+
+한국어 동작 확인은 KoPI-Bench에서 메일 후보로 선별한 2,806건을 사용한다.
+
+```powershell
+python scripts/evaluate_dataset.py `
+  ../../docs/dataset/KoPI-Bench_이메일_공격위치.csv `
+  --model models/prompt_injection.joblib `
+  --transformer-model models/quadrat-transformer `
+  --output reports/kopi-bench-email-metrics.json
+```
+
+2026-11-02 결과에서 병렬 모델은 TF 계열 단독 판정을 한 건도 바꾸지 못했다. InjecAgent 공격은
+전부 검토 대상으로 올렸지만, KoPI-Bench 정상 1,234건도 전부 검토 대상으로 분류했다.
+Transformer 단독은 두 평가셋의 공격을 모두 `safe`로 분류했다. 상세 해석은
+[`../../docs/dataset/external-evaluation-issue-35.md`](../../docs/dataset/external-evaluation-issue-35.md)에
+기록한다.
 
 BIPIA는 이전 모델 평가와 임계값 조정에 이미 사용했으므로 더 이상 독립 외부 테스트가 아니다.
 현재는 학습·검증·내부 테스트 데이터에 편입되어 있다. 이전 기준 모델의 BIPIA 결과는
