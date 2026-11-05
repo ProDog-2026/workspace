@@ -185,10 +185,11 @@ python scripts/evaluate_dataset.py `
   --output reports/kopi-bench-email-metrics.json
 ```
 
-2026-11-02 결과에서 병렬 모델은 TF 계열 단독 판정을 한 건도 바꾸지 못했다. InjecAgent 공격은
-전부 검토 대상으로 올렸지만, KoPI-Bench 정상 1,234건도 전부 검토 대상으로 분류했다.
-Transformer 단독은 두 평가셋의 공격을 모두 `safe`로 분류했다. 상세 해석은
-[`../../docs/dataset/external-evaluation-issue-35.md`](../../docs/dataset/external-evaluation-issue-35.md)에
+2026-11-02 결합 탐지 최종 결과에서 InjecAgent와 KoPI-Bench 공격은 전부 검토 대상으로
+올렸지만, KoPI-Bench 정상 1,234건도 전부 검토 대상으로 분류했다. 따라서 현재 결합 로직은
+한국어 정상과 공격을 구분하지 못한다. #31 적용 전후 비교에서 최종 판정 변경은 0건이었으며,
+이 단독 구성요소 비교는 원인 진단용이다. 상세 해석은
+[`../../docs/dataset/issue-35-external-evaluation.md`](../../docs/dataset/issue-35-external-evaluation.md)에
 기록한다.
 
 BIPIA는 이전 모델 평가와 임계값 조정에 이미 사용했으므로 더 이상 독립 외부 테스트가 아니다.
