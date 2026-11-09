@@ -1,4 +1,4 @@
-# agent-lab — 메일 에이전트 실험실
+# agent-container — 메일 에이전트 실험실
 
 메일 속 프롬프트 인젝션이 **도구를 쓰는 LLM 에이전트**를 실제로 움직이는지 격리 환경에서 실험하는 도구다.
 메일을 읽고 요약하는 에이전트를 실행별 Docker 컨테이너에서 돌리고, 에이전트가 메일 속 지시를 따라
@@ -34,7 +34,7 @@
 
 ### 실행
 
-레포를 받은 뒤 이 폴더(`src/agent-lab`)에서:
+레포를 받은 뒤 이 폴더(`src/agent-container`)에서:
 
 ```powershell
 docker compose up --build
