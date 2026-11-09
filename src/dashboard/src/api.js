@@ -12,6 +12,22 @@ export async function gmail(path, csrf) {
 // 이미 로그인(Gmail 연결)된 세션인지. 재연결이 필요하면 로그인 안 된 것으로 봄. 서버가 꺼져 있으면 false
 export const isLoggedIn = () => gmail('/api/session').then((s) => s.authenticated && !s.needs_reconnect).catch(() => false)
 
+export async function dynamic(path, { method = 'GET', body, signal } = {}) {
+  const headers = {}
+  if (method !== 'GET') {
+    headers['X-CSRF-Token'] = (await gmail('/api/session')).csrf_token
+    if (body !== undefined) headers['Content-Type'] = 'application/json'
+  }
+  const res = await fetch('/api/dynamic' + path, { method, headers, signal,
+    body: body === undefined ? undefined : JSON.stringify(body) }).catch((error) => {
+    if (error.name === 'AbortError') throw error
+    throw new Error(DOWN)
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw Object.assign(new Error(data.error?.message ?? DOWN), { code: data.error?.code, status: res.status })
+  return data
+}
+
 // 수집 메타데이터(GET /api/mails) -> 대시보드 행 모양(schema.sql 의 scans).
 // m.detection 은 수집 서버가 정적 탐지기를 돌린 결과. null 이면 탐지기 미설정이라 검사 전(pending).
 // 근거·LLM 점수는 아직 없음
@@ -24,6 +40,8 @@ export const toRow = (m) => {
   ]
   return {
     id: m.id,
+    body_hash: m.body_hash,
+    dynamic: m.dynamic ?? null,
     gmail_message_id: m.id,
     sender: m.sender,
     subject: m.subject,

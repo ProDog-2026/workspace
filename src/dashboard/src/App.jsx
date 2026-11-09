@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { gmail } from './api'
 import Admin from './Admin'
 import Dashboard from './Dashboard'
@@ -10,10 +10,11 @@ import States from './States'
 import { DEFAULT_RULES, DEFAULT_THRESHOLDS } from './rules'
 import { Logo, ThemeToggle } from './ui'
 
-const MENU = [['', '대시보드'], ['states', '판정 안내'], ['scan', '메일 검사'], ['settings', '설정'], ['admin', '관리자']]
+const Dynamic = lazy(() => import('./Dynamic'))
+const MENU = [['', '대시보드'], ['states', '판정 안내'], ['scan', '메일 검사'], ['dynamic', '동적 검사'], ['settings', '설정'], ['admin', '관리자']]
 // 주소에 # 이 없으면(처음 들어왔을 때) 소개 화면.
 // 단 Google OAuth 가 끝나면 Gmail 모듈이 /?connected=1 또는 /?error=코드 로 돌려보냄 -> 설정 화면으로
-const currentRoute = () => location.hash !== '' ? location.hash.replace(/^#\/?/, '')
+const currentRoute = () => location.hash !== '' ? location.hash.split('?')[0].replace(/^#\/?/, '')
   : /[?&](connected|error)=/.test(location.search) ? 'settings' : 'intro'
 
 export default function App() {
@@ -57,6 +58,7 @@ export default function App() {
           : route === 'states' ? <States />
           : route === 'settings' ? <Settings />
           : route === 'admin' ? <Admin rules={rules} setRules={setRules} thresholds={thresholds} setThresholds={setThresholds} />
+          : route === 'dynamic' ? <Suspense fallback={<p className="empty">동적 검사 페이지를 불러오는 중…</p>}><Dynamic /></Suspense>
           : <Dashboard />}
       </main>
     </div>

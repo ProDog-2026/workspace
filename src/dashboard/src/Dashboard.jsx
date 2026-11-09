@@ -3,6 +3,7 @@ import { gmail, toRow } from './api'
 import { TYPES } from './rules'
 import { Mark, STATES, bySeverity, stateOf } from './ui'
 import { MailDrawer, MailTable, shortType } from './Verdict'
+import useDynamicInbox from './useDynamicInbox'
 
 const dayStart = (daysAgo) => {
   const d = new Date()
@@ -32,10 +33,11 @@ export default function Dashboard() {
   const [error, setError] = useState(null)
   const [next, setNext] = useState(null) // Gmail 다음 페이지 토큰. 없으면 끝
   const [more, setMore] = useState({ busy: false, error: '' })
+  const dynamicNotice = useDynamicInbox(scans, setScans)
 
   const load = (token) => gmail(`/api/mails?limit=${LIMIT}` + (token ? `&page_token=${encodeURIComponent(token)}` : ''))
     .then((d) => {
-      setScans((prev) => [...(prev ?? []), ...d.messages.map(toRow)])
+      setScans((prev) => [...new Map([...(prev ?? []), ...d.messages.map(toRow)].map((row) => [row.id, row])).values()])
       setNext(d.next_page_token)
     })
   useEffect(() => { load().catch(setError) }, [])
@@ -98,6 +100,8 @@ export default function Dashboard() {
         </div>
       </header>
 
+      {dynamicNotice && <p className="dynamic-notice" role="status">{dynamicNotice} <a href="#/dynamic">동적 검사 설정</a></p>}
+
       <section className="stat-strip" aria-label="판정별 메일 수">
         {STRIP.map((k) => {
           const n = countOf(cur, ...FILTERS[k].states)
@@ -152,7 +156,7 @@ export default function Dashboard() {
         )}
       </section>
 
-      {selected && <MailDrawer r={selected} onClose={() => setSelected(null)} />}
+      {selected && <MailDrawer r={scans.find((r) => r.id === selected.id) ?? selected} onClose={() => setSelected(null)} />}
     </>
   )
 }

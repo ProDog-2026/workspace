@@ -15,6 +15,9 @@ from fastapi.staticfiles import StaticFiles
 
 from .config import Settings, get_settings
 from .demo import demo_messages
+from .deployment import Deployment
+from .dynamic import DynamicService
+from .dynamic_api import install_dynamic_routes
 from .errors import ConnectorError
 from .google import GoogleClient
 from .mail import mail_metadata, parse_gmail_message
@@ -27,7 +30,7 @@ STATIC = Path(__file__).parent / "static"
 MESSAGE_ID = re.compile(r"[A-Za-z0-9_-]{1,128}\Z")
 
 
-def create_app(settings: Settings | None = None, transport=None) -> FastAPI:
+def create_app(settings: Settings | None = None, transport=None, dynamic_transport=None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(application: FastAPI):
         config = settings or get_settings()
@@ -44,7 +47,16 @@ def create_app(settings: Settings | None = None, transport=None) -> FastAPI:
             application.state.supabase = (
                 Supabase(config, client) if config.supabase_configured else None
             )
-            yield
+            async with httpx.AsyncClient(transport=dynamic_transport, trust_env=False,
+                                         follow_redirects=False) as dynamic_client:
+                application.state.dynamic = DynamicService(
+                    application.state.store, dynamic_client, config.dynamic_service_url, get_mail)
+                application.state.deployment = Deployment(application.state.dynamic)
+                await application.state.dynamic.start()
+                try:
+                    yield
+                finally:
+                    await application.state.dynamic.close()
 
     application = FastAPI(
         title="ProDog Gmail connector",
@@ -293,6 +305,9 @@ def create_app(settings: Settings | None = None, transport=None) -> FastAPI:
                     return {
                         **mail_metadata(parsed),
                         "detection": scan_mail(application.state.detector, parsed),
+                        "dynamic": latest_dynamic(
+                            current["account_id"], message_id, parsed["body_hash"]
+                        ),
                     }
                 except ConnectorError as exc:
                     # One throttled message should not hide the rest of the inbox.
@@ -329,6 +344,14 @@ def create_app(settings: Settings | None = None, transport=None) -> FastAPI:
         limit_requests(secret, "list", 30)
         return await load_page(current, limit, page_token)
 
+    def latest_dynamic(owner, message_id, body_hash):
+        service = application.state.dynamic
+        job = next((j for j in service.db.listing(owner)
+                    if j.get("mail_id") == message_id and j.get("body_hash") == body_hash), None)
+        return service.db.public(job)
+
+    cancel_dynamic = install_dynamic_routes(application, session, csrf, limit_requests, get_mail)
+
     @application.post("/api/sync")
     async def sync(request: Request, limit: int = Query(20, ge=1, le=50)):
         """Push the latest mails and their verdicts to Supabase. Explicit, so a GET never writes."""
@@ -356,6 +379,7 @@ def create_app(settings: Settings | None = None, transport=None) -> FastAPI:
         if application.state.supabase:
             # Before the local wipe: if this fails the user can retry with the session intact.
             await application.state.supabase.delete_connection(current["email"])
+        await cancel_dynamic(current["account_id"])
         application.state.store.forget_account(current["account_id"])
         response = JSONResponse({"disconnected": True})
         response.delete_cookie(COOKIE, path="/", httponly=True, samesite="lax")

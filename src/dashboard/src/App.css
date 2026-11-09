@@ -1,4 +1,9 @@
 @layer theme, base, utilities; /* 레이어 순서 고정: CSS 로드 순서와 상관없이 Tailwind 유틸리티가 base 보다 이김 */
+.dynamic-notice { padding: 13px 17px; border: 1px solid var(--brand-line); border-radius: 12px; color: var(--ink-2); background: var(--brand-weak); line-height: 1.65; font-size: 13px; margin: 0 0 20px; }
+.dynamic-notice a { font-weight: 600; text-decoration: underline; }
+.dynamic-inbox { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 12px 0; }
+.dynamic-inbox a { font-size: 12px; color: var(--accent); text-decoration: underline; }
+.dynamic-inbox-cell { margin-top: 6px; font-size: 11px; color: var(--muted); white-space: normal; }
 /* ProDog console UI: one radius (2px), solid cool-grey neutrals, navy GNB, ProDog blue. */
 :root {
   color-scheme: light;

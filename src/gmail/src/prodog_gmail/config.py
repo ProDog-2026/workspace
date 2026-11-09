@@ -6,6 +6,8 @@ from cryptography.fernet import Fernet
 from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from .dynamic_models import local_url
+
 GMAIL_SCOPE = "https://www.googleapis.com/auth/gmail.readonly"
 
 
@@ -24,6 +26,7 @@ class Settings(BaseSettings):
     database_path: Path = Path("data/prodog.db")
     # Trained model from src/detector (not in Git). Empty = no detection, mails stay "not scanned".
     detector_model_path: Path | None = None
+    dynamic_service_url: str = "http://127.0.0.1:8000"
     # Server-side writes only. service_role bypasses RLS, so this key never reaches the browser.
     supabase_url: str = ""
     supabase_service_key: SecretStr = SecretStr("")
@@ -33,6 +36,7 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_config(self):
+        self.dynamic_service_url = local_url(self.dynamic_service_url)
         if self.app_mode not in {"demo", "google"}:
             raise ValueError("APP_MODE must be demo or google")
         for name in ("app_base_url", "dashboard_url"):

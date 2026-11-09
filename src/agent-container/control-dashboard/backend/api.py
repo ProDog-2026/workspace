@@ -22,6 +22,9 @@ from .worker_api import install_errors
 
 class CreateRun(BaseModel):
     model_config = ConfigDict(extra="forbid")
+    request_id: str | None = Field(default=None, pattern=r"^[0-9a-f]{32}$",
+        description="Email-run idempotency key; replays reuse the original run.")
+    expected_prompt_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     config: ConnectionConfig | None = None
     settings_id: str | None = None
     tools: list[dict[str, Any]] = Field(default_factory=list)
@@ -87,8 +90,12 @@ def create_dashboard_app(manager: RunManager):
             if not body.email.get("body", "").strip():
                 raise RunError("email_body_required", 422)
             tools = json.loads(Path(__file__).with_name("tool_definitions.json").read_text(encoding="utf-8"))
-            return manager.launch(config, tools, body.email, body.limits, body.temperature, body.prompt_id)
+            return manager.launch(config, tools, body.email, body.limits, body.temperature,
+                                  body.prompt_id, request_id=body.request_id,
+                                  expected_prompt_hash=body.expected_prompt_hash)
         # Manual protocol testing remains available, but credentials stay server-side.
+        if body.request_id is not None or body.expected_prompt_hash is not None:
+            raise RunError("request_id_and_prompt_hash_require_email", 422)
         created = manager.create(config, body.tools, body.limits, body.temperature, body.prompt_id)
         return {k: v for k, v in created.items() if k != "execution_token"}
 

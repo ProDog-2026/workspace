@@ -1,6 +1,8 @@
 """In-memory run state, scoped bearer tokens and authoritative call limits."""
 import asyncio
 import copy
+import hashlib
+import os
 import secrets
 import time
 import uuid
@@ -75,11 +77,12 @@ class RunManager:
         self.store = EvidenceStore(data_root) if data_root else None
         self.prompts = PromptStore(Path(data_root) / "prompts.json" if data_root else None)
 
-    def create(self, config, tools, limits=None, temperature=0.1, prompt_id=DEFAULT_PROMPT_ID):
+    def create(self, config, tools, limits=None, temperature=0.1, prompt_id=DEFAULT_PROMPT_ID,
+               *, run_id=None):
         prompt = self.prompts.get(prompt_id)
         if prompt is None:
             raise RunError("prompt_not_found", 422)
-        run = Run(temperature=temperature, prompt_id=prompt_id, prompt_text=prompt["text"], id=uuid.uuid4().hex, config=config.model_copy(deep=True),
+        run = Run(temperature=temperature, prompt_id=prompt_id, prompt_text=prompt["text"], id=run_id or uuid.uuid4().hex, config=config.model_copy(deep=True),
                   tools=copy.deepcopy(tools), limits=(limits or Limits()).model_copy(deep=True),
                   token=secrets.token_urlsafe(32))
         self.runs[run.id] = run
@@ -190,10 +193,68 @@ class RunManager:
                  ("run_id", "source", "event_id", "event_type", "occurred_at")}
         self.record(run, "agent", kind, **clean)
 
-    def launch(self, config, tools, email, limits=None, temperature=0.1, prompt_id=DEFAULT_PROMPT_ID):
-        if self.runtime is None or self.store is None:
+    def _replay_request(self, request_id, request_hash):
+        """A reservation without a result is ambiguous, never permission to relaunch."""
+        try:
+            reservation = json.loads((self.store.directory(request_id) / "request.json")
+                                     .read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            return None
+        except (OSError, ValueError):
+            raise RunError("submission_unknown") from None
+        if not isinstance(reservation, dict) or not reservation.get("request_hash"):
+            raise RunError("submission_unknown")
+        if reservation["request_hash"] != request_hash:
+            raise RunError("request_id_conflict")
+        return self.view(request_id)
+
+    def launch(self, config, tools, email, limits=None, temperature=0.1, prompt_id=DEFAULT_PROMPT_ID,
+               *, request_id=None, expected_prompt_hash=None):
+        if self.store is None:
             raise RunError("docker_runtime_not_configured", 503)
-        info = self.create(config, tools, limits, temperature, prompt_id)
+        limits = limits or Limits()
+        if request_id is not None:
+            try:
+                directory = self.store.directory(request_id)
+            except ValueError:
+                raise RunError("invalid_request_id", 422) from None
+            # Credentials may rotate without changing the requested execution. Only
+            # the digest is persisted; email bodies and credentials are not stored here.
+            request_hash = hashlib.sha256(json.dumps({
+                "config": config.model_dump(exclude={"api_key"}), "tools": tools,
+                "email": {k: str(email.get(k, "")) for k in ("subject", "body")},
+                "limits": limits.model_dump(), "temperature": temperature,
+                "prompt_id": prompt_id, "expected_prompt_hash": expected_prompt_hash,
+            }, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+            existing = self._replay_request(request_id, request_hash)
+            if existing is not None:
+                return existing
+            if request_id in self.runs or (directory / "result.json").exists():
+                raise RunError("request_id_conflict")
+        if self.runtime is None:
+            raise RunError("docker_runtime_not_configured", 503)
+        prompt = self.prompts.get(prompt_id)
+        if prompt is None:
+            raise RunError("prompt_not_found", 422)
+        if expected_prompt_hash is not None:
+            actual_hash = hashlib.sha256(json.dumps(prompt["text"], sort_keys=True,
+                                                     ensure_ascii=False).encode()).hexdigest()
+            if actual_hash != expected_prompt_hash:
+                raise RunError("prompt_changed", 422)
+        if request_id is not None:
+            try:
+                directory.mkdir(parents=True, exist_ok=True)
+                # Exclusive creation serializes competing submissions, including
+                # other processes. Flush the reservation before any task is scheduled.
+                with (directory / "request.json").open("x", encoding="utf-8") as handle:
+                    json.dump({"request_hash": request_hash}, handle)
+                    handle.flush()
+                    os.fsync(handle.fileno())
+            except FileExistsError:
+                return self._replay_request(request_id, request_hash)
+            except OSError:
+                raise RunError("reservation_storage_failed", 503) from None
+        info = self.create(config, tools, limits, temperature, prompt_id, run_id=request_id)
         run = self.get(info["run_id"])
         run.marker = "MK-" + run.id
         run.email = {k: str(email.get(k, "")).replace("{{MARKER}}", run.marker)
@@ -256,6 +317,11 @@ class RunManager:
         try:
             return self.store.load(run_id)
         except (OSError, ValueError, AttributeError):
+            try:
+                if self.store and (self.store.directory(run_id) / "request.json").exists():
+                    raise RunError("submission_unknown")
+            except ValueError:
+                pass
             raise RunError("run_not_found", 404) from None
 
     def listing(self):
