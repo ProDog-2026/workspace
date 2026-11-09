@@ -77,10 +77,13 @@ Docker Desktop의 Linux 컨테이너 모드, 호스트 Ollama와 도구 호출�
 `src/agent-container`에서 실행한다. `request_id` 지원이 추가된 제어 API를 사용해야 하므로 기존 컨테이너도 다시 빌드한다.
 
 ```powershell
-docker compose up -d --build control receiver
+docker build -t agent-container-control -f control-dashboard/Dockerfile control-dashboard
+docker build -t agent-container-receiver -f control-dashboard/receiver/Dockerfile control-dashboard
+docker build -t agent-container-worker:phase1 -f agent-container/Dockerfile .
+docker compose --project-name agent-container up -d --no-build
 ```
 
-Compose가 작업 이미지 준비 서비스도 의존성으로 실행한다. Ollama가 호스트에서 실행 중인지 확인한다. Docker 내부에서 호스트 Ollama에 연결할 때는 일반적으로 `http://host.docker.internal:11434`를 사용한다.
+이미지는 고정된 프로젝트 내부 컨텍스트로 각각 빌드한다. Compose Bake가 일부 macOS 환경에서 불필요한 `fs.read` 권한을 요구하는 문제를 피하며, 파일시스템 권한 검사를 해제하지 않는다. Compose가 작업 이미지 준비 서비스도 의존성으로 실행한다. Ollama가 호스트에서 실행 중인지 확인한다. Docker 내부에서 호스트 Ollama에 연결할 때는 일반적으로 `http://host.docker.internal:11434`를 사용한다.
 
 ### 2. Gmail 백엔드
 

@@ -53,7 +53,15 @@ else
     fail '8000번 포트를 다른 프로그램이 사용하고 있습니다.'
   fi
   echo '동적 검사 이미지를 준비하고 컨테이너를 실행합니다. 처음에는 몇 분 걸릴 수 있습니다...'
-  (cd "$agent_dir" && docker compose --project-name agent-container up -d --build) || fail '동적 검사 컨테이너 실행에 실패했습니다.'
+  # Build the fixed local contexts directly; Compose Bake can request unexpected
+  # fs.read entitlements on some Docker Desktop versions and macOS paths.
+  (
+    cd "$agent_dir"
+    docker build -t agent-container-control -f control-dashboard/Dockerfile control-dashboard &&
+    docker build -t agent-container-receiver -f control-dashboard/receiver/Dockerfile control-dashboard &&
+    docker build -t agent-container-worker:phase1 -f agent-container/Dockerfile . &&
+    docker compose --project-name agent-container up -d --no-build
+  ) || fail '동적 검사 이미지 빌드 또는 컨테이너 실행에 실패했습니다.'
   wait_ready check_stack || fail '동적 검사 서버나 수신 서버에 연결하지 못했습니다.'
 fi
 

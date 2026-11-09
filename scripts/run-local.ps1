@@ -117,7 +117,16 @@ function Start-Agent {
             throw '8000번 포트를 다른 프로그램이 사용하고 있습니다. 확인 후 다시 실행하세요.'
         }
         Write-Host '동적 검사 이미지를 준비하고 컨테이너를 실행합니다. 처음에는 몇 분 걸릴 수 있습니다...'
-        $exitCode = Invoke-Native 'docker' @('compose', 'up', '-d', '--build')
+        $builds = @(
+            @{ Tag = 'agent-container-control'; File = 'control-dashboard/Dockerfile'; Context = 'control-dashboard' },
+            @{ Tag = 'agent-container-receiver'; File = 'control-dashboard/receiver/Dockerfile'; Context = 'control-dashboard' },
+            @{ Tag = 'agent-container-worker:phase1'; File = 'agent-container/Dockerfile'; Context = '.' }
+        )
+        foreach ($build in $builds) {
+            $exitCode = Invoke-Native 'docker' @('build', '-t', $build.Tag, '-f', $build.File, $build.Context)
+            if ($exitCode -ne 0) { throw '동적 검사 이미지 빌드에 실패했습니다. Docker 메시지를 확인하세요.' }
+        }
+        $exitCode = Invoke-Native 'docker' @('compose', '--project-name', 'agent-container', 'up', '-d', '--no-build')
         if ($exitCode -ne 0) { throw '동적 검사 컨테이너 실행에 실패했습니다. Docker 메시지를 확인하세요.' }
         if (-not (Wait-Ready { Test-Control } 30)) { throw '동적 검사 서버에 연결하지 못했습니다.' }
         Write-Host '동적 검사 서버가 준비됐습니다.'

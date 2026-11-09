@@ -60,9 +60,11 @@ case "$1" in
       *project=agent-container*) [ ! -f "$MOCK_STATE/stack" ] || echo control-id ;;
       *agent.run_id*) [ ! -f "$MOCK_STATE/busy" ] || echo worker-id ;;
     esac ;;
+  build) touch "$MOCK_STATE/images" ;;
   compose)
     case "$*" in
-      *' up '*) touch "$MOCK_STATE/images" "$MOCK_STATE/stack" ;;
+      *' up '*--no-build*) touch "$MOCK_STATE/stack" ;;
+      *' up '*) echo 'Compose must not invoke Bake.' >&2; exit 1 ;;
       *' stop '*) rm -f "$MOCK_STATE/stack" ;;
       *) exit 1 ;;
     esac ;;
@@ -147,6 +149,11 @@ export -f kill
 bash "$MOCK_FIXTURE/run.command"
 [ -f "$MOCK_STATE/stack" ] && [ -f "$MOCK_STATE/gmail" ] && [ -f "$MOCK_STATE/dashboard" ]
 [ "$(cat "$MOCK_FIXTURE/src/gmail/.env")" = dummy ]
+[ "$(grep -c '^build ' "$MOCK_STATE/docker-calls")" -eq 3 ]
+grep -Fq 'build -t agent-container-control -f control-dashboard/Dockerfile control-dashboard' "$MOCK_STATE/docker-calls"
+grep -Fq 'build -t agent-container-receiver -f control-dashboard/receiver/Dockerfile control-dashboard' "$MOCK_STATE/docker-calls"
+grep -Fq 'build -t agent-container-worker:phase1 -f agent-container/Dockerfile .' "$MOCK_STATE/docker-calls"
+grep -Fq 'compose --project-name agent-container up -d --no-build' "$MOCK_STATE/docker-calls"
 [ "$(grep -c 'compose .* up ' "$MOCK_STATE/docker-calls")" -eq 1 ]
 bash "$MOCK_FIXTURE/run.sh"
 [ "$(grep -c 'compose .* up ' "$MOCK_STATE/docker-calls")" -eq 1 ]

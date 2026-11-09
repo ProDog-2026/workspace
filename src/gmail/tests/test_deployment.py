@@ -32,7 +32,7 @@ def test_deployment_starts_once_and_checks_connection_after_build(tmp_path):
 
         async def fake_command(*args, timeout=0):
             calls.append(args)
-            if args[:3] == ("compose", "up", "-d"):
+            if args[:1] == ("compose",) and "up" in args:
                 await release.wait()
                 service.control = True
             if args[:2] == ("image", "inspect") and not service.control:
@@ -52,7 +52,34 @@ def test_deployment_starts_once_and_checks_connection_after_build(tmp_path):
         await deploy.task
         status = await deploy.status()
         assert status["state"] == "succeeded" and status["ready"]
-        assert sum(c[:3] == ("compose", "up", "-d") for c in calls) == 1
+        assert sum(c[:1] == ("compose",) and "up" in c for c in calls) == 1
+        assert [c for c in calls if c[:1] == ("build",)] == [
+            (
+                "build",
+                "-t",
+                "agent-container-control",
+                "-f",
+                "control-dashboard/Dockerfile",
+                "control-dashboard",
+            ),
+            (
+                "build",
+                "-t",
+                "agent-container-receiver",
+                "-f",
+                "control-dashboard/receiver/Dockerfile",
+                "control-dashboard",
+            ),
+            (
+                "build",
+                "-t",
+                "agent-container-worker:phase1",
+                "-f",
+                "agent-container/Dockerfile",
+                ".",
+            ),
+        ]
+        assert ("compose", "--project-name", "agent-container", "up", "-d", "--no-build") in calls
         assert not service.deploying
 
     asyncio.run(scenario())
@@ -84,7 +111,7 @@ def test_deployment_failure_does_not_claim_connected(tmp_path):
         deploy = Deployment(service, root=tmp_path)
 
         async def failed_build(*args, timeout=0):
-            if args[:3] == ("compose", "up", "-d"):
+            if args[:1] == ("compose",) and "up" in args:
                 return 1, ""
             if args[:2] == ("image", "inspect") or args[:1] == ("inspect",):
                 return 1, ""
@@ -111,5 +138,29 @@ def test_deployment_reports_docker_missing(tmp_path):
         deploy.command = no_docker
         result = await deploy.start()
         assert result["state"] == "failed" and result["error"] == "docker_unavailable"
+
+    asyncio.run(scenario())
+
+
+def test_failed_image_build_never_starts_compose(tmp_path):
+    async def scenario():
+        service = Service()
+        deploy = Deployment(service, root=tmp_path)
+        calls = []
+
+        async def failed_receiver(*args, timeout=0):
+            calls.append(args)
+            if args[:1] == ("build",) and "agent-container-receiver" in args:
+                return 1, ""
+            if args[:2] == ("image", "inspect") or args[:1] == ("inspect",):
+                return 1, ""
+            return 0, ""
+
+        deploy.command = failed_receiver
+        await deploy.start()
+        await deploy.task
+        assert deploy.state == "failed" and deploy.error == "deployment_failed"
+        assert not any(call[:1] == ("compose",) for call in calls)
+        assert not service.deploying
 
     asyncio.run(scenario())

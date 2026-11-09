@@ -37,13 +37,16 @@
 레포를 받은 뒤 이 폴더(`src/agent-container`)에서:
 
 ```powershell
-docker compose up --build
+docker build -t agent-container-control -f control-dashboard/Dockerfile control-dashboard
+docker build -t agent-container-receiver -f control-dashboard/receiver/Dockerfile control-dashboard
+docker build -t agent-container-worker:phase1 -f agent-container/Dockerfile .
+docker compose --project-name agent-container up -d --no-build
 ```
 
 브라우저에서 **http://127.0.0.1:8000** 에 접속한다. 별도 프론트 빌드는 필요 없다.
-`agent-image`는 작업용 이미지를 빌드하고 곧바로 종료되는 준비 서비스이며, 정상 동작이다.
+`agent-image`는 빌드된 작업 이미지를 확인하고 곧바로 종료되는 준비 서비스이며, 정상 동작이다. 각 이미지를 직접 빌드해 일부 macOS 환경에서 Compose Bake가 요구하는 추가 `fs.read` 권한 문제를 피한다.
 
-종료는 `Ctrl+C` 후 `docker compose down`.
+종료는 `docker compose --project-name agent-container stop`.
 
 ### 첫 실행 체크리스트
 
@@ -238,7 +241,7 @@ $env:RUN_DOCKER_TESTS = "1"
 | **Ollama 연결 실패** | 호스트에서 Ollama가 실행 중이고 모델이 설치됐는지. 컨테이너 안의 `localhost`는 호스트가 아니므로 `host.docker.internal`을 쓴다. Ollama 리슨 주소와 호스트 방화벽이 Docker에서의 연결을 허용하는지 |
 | **도구 호출이 확인되지 않음** | 모델·템플릿·출력 한도 문제일 수 있다. 도구 지원 모델인지, 응답 토큰 예산을 늘려도 같은지 |
 | **Docker 소켓/엔진 접근 거부** | Docker Desktop이 Linux 컨테이너 모드인지, 현재 계정이 엔진에 접근 가능한지. control은 Docker 소켓 마운트가 필요하다 |
-| **이미지 없음** | `docker compose up --build`에서 `agent-image` 빌드가 성공했는지 |
+| **이미지 없음** | 위 세 `docker build` 명령이 성공했는지 확인 |
 | **네트워크 충돌** | `work-net`이 이미 있거나 `172.29.80.0/24`가 겹치는 경우. 다른 프로젝트의 네트워크를 지우지 말고, 이 프로젝트의 네트워크 이름·대역(`compose.yaml`의 `WORK_NETWORK`, `WORK_NET_CIDR`, `networks`)을 함께 조정한다 |
 | **저장 오류** | `./data/runs`에 쓰기 권한이 있는지. 결과 보관에 실패하면 작업 컨테이너가 남는다 |
 | **`:8000` 포트 사용 중** | 다른 프로세스를 끄거나 `compose.yaml`의 `ports`를 바꾼다 |

@@ -9,6 +9,25 @@ from .dynamic import ACTIVE
 from .errors import ConnectorError
 
 IMAGES = ("agent-container-control", "agent-container-receiver", "agent-container-worker:phase1")
+BUILD_COMMANDS = (
+    (
+        "build",
+        "-t",
+        "agent-container-control",
+        "-f",
+        "control-dashboard/Dockerfile",
+        "control-dashboard",
+    ),
+    (
+        "build",
+        "-t",
+        "agent-container-receiver",
+        "-f",
+        "control-dashboard/receiver/Dockerfile",
+        "control-dashboard",
+    ),
+    ("build", "-t", "agent-container-worker:phase1", "-f", "agent-container/Dockerfile", "."),
+)
 
 
 class Deployment:
@@ -132,7 +151,21 @@ class Deployment:
 
     async def _run(self):
         try:
-            code, _ = await self.command("compose", "up", "-d", "--build", timeout=1800)
+            # Build fixed contexts directly to avoid Compose Bake's extra access request.
+            for build in BUILD_COMMANDS:
+                code, _ = await self.command(*build, timeout=1800)
+                if code != 0:
+                    self.state, self.error = "failed", "deployment_failed"
+                    return
+            code, _ = await self.command(
+                "compose",
+                "--project-name",
+                "agent-container",
+                "up",
+                "-d",
+                "--no-build",
+                timeout=1800,
+            )
             if code != 0:
                 self.state, self.error = "failed", "deployment_failed"
                 return

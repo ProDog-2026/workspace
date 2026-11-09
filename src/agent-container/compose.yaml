@@ -1,5 +1,6 @@
 services:
   control:
+    image: agent-container-control
     build: ./control-dashboard
     ports: ["127.0.0.1:8000:8000"]
     environment:
@@ -24,6 +25,7 @@ services:
         condition: service_completed_successfully
   receiver:
     container_name: agent-test-receiver
+    image: agent-container-receiver
     build:
       context: ./control-dashboard
       dockerfile: receiver/Dockerfile
