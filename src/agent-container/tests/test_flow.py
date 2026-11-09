@@ -131,3 +131,75 @@ def test_flow_endpoint_and_panel_assets(tmp_path):
 def test_flow_panel_does_not_render_untrusted_html():
     source = (Path(__file__).resolve().parents[1] / "control-dashboard/frontend/flow.js").read_text(encoding="utf-8")
     assert "innerHTML" not in source and "textContent" in source
+
+
+def statuses(flow):
+    return [(s["node"], s["outcome"]["status"]) for s in flow["steps"]]
+
+
+def test_every_step_of_a_clean_run_is_ok_and_run_outcome_is_ok():
+    events = real_like_events()
+    run, result = finished(events)
+    flow = trace(run, events, result, {})
+    assert {status for _, status in statuses(flow)} == {"ok"}
+    assert flow["outcome"]["status"] == "ok"
+    assert all(set(s["outcome"]) == {"status", "label", "detail"} for s in flow["steps"])
+
+
+def test_in_progress_run_is_running_only_on_its_last_step():
+    events = real_like_events()
+    run, _ = finished(events)
+    flow = trace(run | {"phase": "executing", "status": "running"}, events[:5], None, {})
+    assert statuses(flow)[-1][1] == "running" and flow["outcome"]["status"] == "running"
+    assert all(status == "ok" for _, status in statuses(flow)[:-1])
+    assert flow["steps"][-1]["outcome"]["detail"] == flow["waiting"]
+
+
+def test_tool_limit_and_incomplete_run_are_failures():
+    events = real_like_events(tool_steps=(("read_email",),), blocked=True)
+    run, result = finished(events, "limit_reached")
+    flow = trace(run, events, result, {})
+    by_node = dict(statuses(flow))
+    assert by_node["execute_tools"] == "fail" and by_node["agent_final"] == "fail"
+    assert flow["outcome"]["status"] == "fail"
+    tools = [s for s in flow["steps"] if s["node"] == "execute_tools"][-1]
+    assert tools["outcome"]["label"] == "도구 한도"
+
+
+def test_deviation_is_a_warning_not_a_failure():
+    events = real_like_events(tool_steps=(("read_email",), ("fetch_url", "save_summary")))
+    run, result = finished(events)
+    flow = trace(run, events, result, {})
+    by_step = {(s["node"], s["index"]): s["outcome"] for s in flow["steps"]}
+    tool_steps = [s["outcome"] for s in flow["steps"] if s["node"] == "execute_tools"]
+    assert [o["status"] for o in tool_steps] == ["ok", "warn"] and "fetch_url" in tool_steps[1]["detail"]
+    rules = [s["outcome"] for s in flow["steps"] if s["node"] == "evaluate_rules"][0]
+    assert rules["status"] == "warn" and rules["label"] == "이탈 1건"
+    assert flow["outcome"]["status"] == "warn" and by_step
+
+
+def test_storage_error_and_missing_final_are_failures():
+    events = real_like_events()
+    run, result = finished(events, phase="storage_error")
+    assert dict(statuses(trace(run, events, result, {})))["persist_result"] == "fail"
+    run, result = finished(events)
+    flow = trace(run, [e for e in events if e["event_type"] != "final"], result, {})
+    assert dict(statuses(flow))["agent_final"] == "fail"
+
+
+def test_layout_groups_and_abnormal_edges_are_exposed_without_crossings():
+    events = real_like_events()
+    run, result = finished(events)
+    flow = trace(run, events, result, {})
+    assert flow["groups"] == [{"id": "agent_loop", "title": "에이전트 루프", "nodes": ["llm_gateway", "execute_tools"]}]
+    abnormal = {(e["source"], e["target"]) for e in flow["edges"] if e["abnormal"]}
+    assert abnormal == {("execute_tools", "agent_final"), ("persist_result", "__end__")}
+    pos = {n["id"]: (n["col"], n["row"]) for n in flow["nodes"]}
+    assert len(set(pos.values())) == len(pos) and all(v is not None for p in pos.values() for v in p)
+
+    def cross(a, b, c, d):
+        o = lambda p, q, r: (q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0])
+        return o(a, b, c) * o(a, b, d) < 0 and o(c, d, a) * o(c, d, b) < 0
+    segs = [(pos[e["source"]], pos[e["target"]]) for e in flow["edges"]]
+    crossings = [(s, t) for i, s in enumerate(segs) for t in segs[i + 1:] if cross(*s, *t)]
+    assert crossings == []
