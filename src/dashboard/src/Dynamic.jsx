@@ -299,7 +299,7 @@ function DynamicRun({ job, onChange, onSelect }) {
     {error && <p className="dynamic-notice error" role="alert">{error}</p>}
     {job.error_code && <p className="note">{dynamicError(job.error_code)}</p>}
     <DynamicResult job={job} result={result} onEvidence={setSelectedEvent} />
-    <DynamicFlow flow={flow} />
+    <DynamicFlow flow={flow} runtimeMode={result?.runtime_mode ?? job.runtime_mode} />
     <DynamicEvents events={events} selectedEvent={selectedEvent} />
   </div>
 }

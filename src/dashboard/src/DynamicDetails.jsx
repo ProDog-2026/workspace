@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useId, useState } from 'react'
 import '../../agent-container/control-dashboard/frontend/presentation.js'
 import { dynamicLabel, dynamicError } from './dynamicState'
+import { containerBounds, flowEdgePath, flowLayout, graphWidth } from './flowGeometry'
 
 const view = globalThis.DashboardPresentation
 export const format = (value) => typeof value === 'string' ? value : JSON.stringify(value, null, 2)
@@ -91,34 +92,55 @@ export function DynamicEvents({ events, selectedEvent }) {
   </section>
 }
 
-export function DynamicFlow({ flow }) {
+export function DynamicFlow({ flow, runtimeMode }) {
   const [selected, setSelected] = useState(null)
+  const arrowId = `dynamic-arrow-${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`
   if (!flow) return <section className="panel"><div className="panel-head"><h2>데이터 흐름</h2></div><p className="empty">실행이 시작되면 단계별 흐름을 표시합니다.</p></section>
   const step = flow.steps.find((s) => s.index === selected) ?? flow.steps.at(-1)
   const nodes = new Map(flow.nodes.map((node) => [node.id, node]))
-  const point = (id) => { const n = nodes.get(id); return [40 + (n?.col ?? 0) * 220, 30 + (n?.row ?? 0) * 115] }
+  const { positions, height } = flowLayout(flow.nodes)
   const pick = (id) => setSelected(flow.steps.findLast((s) => s.node === id)?.index ?? null)
+  const areaTitle = runtimeMode === 'docker' ? '작업 컨테이너' : '작업 실행 영역'
+  const areaCaption = runtimeMode === 'host_process_no_docker' ? 'Docker 없이 호스트에서 실행된 기록'
+    : runtimeMode === 'docker' ? '에이전트 · 도구 실행' : '실행 환경 확인 중'
   return <section className="panel dynamic-flow">
     <div className="panel-head"><h2>데이터 흐름 <span className="tag">LangGraph</span></h2><span className="note">{flow.outcome?.label} · {flow.steps.length}단계</span></div>
     <div className="panel-body">
       {flow.anomalies?.length > 0 && <p className="dynamic-notice">{flow.anomalies.join(' · ')}</p>}
-      <div className="dynamic-graph"><svg viewBox="0 0 920 465" role="group" aria-label="동적 검사 데이터 흐름">
-        <defs><marker id="dynamic-arrow" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0 0 L7 3.5 L0 7" fill="currentColor" /></marker></defs>
+      <div className="dynamic-flow-key"><span><i className="dynamic-key-boundary" aria-hidden="true" /> {areaTitle}</span><span><i className="dynamic-key-outside" aria-hidden="true" /> 제어 서버 · 외부 LLM</span><span><i className="dynamic-key-visited" aria-hidden="true" /> 통과한 흐름</span></div>
+      <p className="dynamic-flow-help">{runtimeMode === 'host_process_no_docker' ? '이 기록은 Docker 없이 호스트에서 실행되었습니다. LLM 요청은 제어 서버를 거쳐 Ollama로 전달됩니다.' : 'LLM 요청은 제어 서버를 거쳐 Ollama로 전달됩니다. 경계는 실행 구조를 나타내며, 네트워크 격리 검증 결과는 별도입니다.'}</p>
+      <div className="dynamic-graph" role="region" aria-label="데이터 흐름 그래프, 가로로 스크롤 가능" tabIndex={0}><svg viewBox={`0 0 ${graphWidth} ${height}`} role="group" aria-label="동적 검사 데이터 흐름">
+        <defs><marker id={arrowId} markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0 0 L7 3.5 L0 7" fill="context-stroke" /></marker></defs>
+        <g aria-hidden="true">
+          <text x="30" y="72" className="dynamic-graph-section">01 · 실행 요청</text>
+          <text x="30" y="255" className="dynamic-graph-section">02 · 외부 모델 연결</text>
+          <text x="30" y="400" className="dynamic-graph-section">03 · 증거 수집 및 판정</text>
+          <text x="30" y="550" className="dynamic-graph-section">04 · 결과 전달</text>
+          <rect className="dynamic-container-boundary" x={containerBounds.x} y={containerBounds.y} width={containerBounds.width} height={containerBounds.height} rx="22" />
+          {runtimeMode === 'docker' && <g className="dynamic-container-icon" transform="translate(737 73)"><rect x="1" y="7" width="15" height="12" rx="3" /><path d="M4 7V5a4.5 4.5 0 0 1 9 0v2M8.5 12v2" /></g>}
+          <text x="763" y="89" className="dynamic-container-title">{areaTitle}</text>
+          <text x="1098" y="89" textAnchor="end" className="dynamic-container-caption">{areaCaption}</text>
+          <line x1="982" y1="123" x2="982" y2="478" className="dynamic-container-divider" />
+          <text x="1000" y="151" className="dynamic-container-aside-title">실행 준비</text>
+          <text x="1000" y="171" className="dynamic-container-aside">작업 생성</text>
+          <text x="1000" y="316" className="dynamic-container-aside-title">도구 동작</text>
+          <text x="1000" y="336" className="dynamic-container-aside">요청 · 처리</text>
+          <text x="1000" y="466" className="dynamic-container-aside-title">종료 보고</text>
+          <text x="1000" y="486" className="dynamic-container-aside">결과 전달</text>
+        </g>
         {flow.edges.map((edge, i) => {
-          const a = point(edge.source), b = point(edge.target)
-          const horizontal = a[1] === b[1], forward = a[0] < b[0]
-          const start = horizontal ? [a[0] + (forward ? 170 : 0), a[1] + 30] : [a[0] + 85, a[1] + (a[1] < b[1] ? 60 : 0)]
-          const end = horizontal ? [b[0] + (forward ? 0 : 170), b[1] + 30] : [b[0] + 85, b[1] + (a[1] < b[1] ? 0 : 60)]
-          return <path key={i} d={`M${start} L${end}`} markerEnd="url(#dynamic-arrow)" className={`dynamic-edge ${edge.count ? 'visited' : ''} ${edge.abnormal ? 'abnormal' : ''}`}><title>{edge.label} · 통과 {edge.count}회</title></path>
+          const path = flowEdgePath(edge, positions)
+          return path && <path key={i} d={path} markerEnd={`url(#${arrowId})`} className={`dynamic-edge ${edge.count ? 'visited' : ''} ${edge.abnormal ? 'abnormal' : ''}`}><title>{edge.label || `${nodes.get(edge.source)?.title} → ${nodes.get(edge.target)?.title}`} · 통과 {edge.count ?? 0}회</title></path>
         })}
         {flow.nodes.map((node) => {
-          const [x, y] = point(node.id), current = flow.current === node.id
+          const [x, y] = positions.get(node.id), current = flow.current === node.id
           return <g key={node.id} role="button" tabIndex={0} aria-label={`${node.title}, ${node.visits}회${current ? ', 진행 중' : ''}`} onClick={() => pick(node.id)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(node.id) } }}
-            className={`dynamic-node ${node.visits ? 'visited' : ''} ${current ? 'current' : ''} ${step?.node === node.id ? 'selected' : ''}`}>
-            <rect x={x} y={y} width="170" height="60" rx="12" /><text x={x + 85} y={y + 25}>{node.title}</text><text className="dynamic-node-meta" x={x + 85} y={y + 45}>{current ? '진행 중' : node.visits ? `${node.visits}회 통과` : '미도달'}</text>
+            aria-pressed={step?.node === node.id} className={`dynamic-node ${node.visits ? 'visited' : ''} ${current ? 'current' : ''} ${step?.node === node.id ? 'selected' : ''}`}>
+            <rect x={x} y={y} width="176" height="64" rx="12" /><text x={x + 88} y={y + 27}>{node.title}</text><text className="dynamic-node-meta" x={x + 88} y={y + 48}>{current ? '진행 중' : node.visits ? `${node.visits}회 통과` : '미도달'}</text>
           </g>
         })}
       </svg></div>
+      <details className="dynamic-flow-edges"><summary>단계 연결 목록 보기</summary><ul>{flow.edges.map((edge, index) => <li key={index}>{nodes.get(edge.source)?.title ?? edge.source} → {nodes.get(edge.target)?.title ?? edge.target}{edge.label ? ` (${edge.label})` : ''} · {edge.count ?? 0}회 통과</li>)}</ul></details>
       <div className="dynamic-flow-details">
         <ol aria-label="실행 단계">{flow.steps.map((s) => <li key={s.index}><button className="btn" aria-pressed={s.index === step?.index} onClick={() => setSelected(s.index)}>{s.index}. {nodes.get(s.node)?.title ?? s.node}<span>{s.outcome?.label}</span></button></li>)}</ol>
         <div>{step && <><h3>{nodes.get(step.node)?.title ?? step.node} · {step.outcome?.label}</h3><p className="note">{step.outcome?.detail}</p><Raw title="이 단계에서 바뀐 데이터" value={step.delta} /><pre>{format(step.state)}</pre></>}
