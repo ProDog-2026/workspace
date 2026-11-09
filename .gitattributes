@@ -1,0 +1,6 @@
+/run.sh text eol=lf
+/stop.sh text eol=lf
+/run.command text eol=lf
+/stop.command text eol=lf
+/scripts/macos-common.sh text eol=lf
+/scripts/tests/macos-launchers.test.sh text eol=lf

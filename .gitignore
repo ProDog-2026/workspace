@@ -19,6 +19,7 @@
 **/.mypy_cache/
 **/*.pid
 **/*.log
+.local-run/
 **/dist/
 **/build/
 

@@ -11,6 +11,16 @@ Gmail의 기존 `.env`는 유지한다. 설정이 없으면 데모 모드로 생
 
 종료할 때는 같은 폴더의 **`stop.cmd`**를 더블클릭한다. 이 워크스페이스의 웹 대시보드, Gmail 백엔드와 동적 검사 컨테이너를 종료하며, 진행 중인 동적 검사도 중지한다. Docker Desktop과 Ollama는 계속 실행된다. 종료 전 대상만 확인하려면 PowerShell에서 `./stop.cmd -Preview`를 실행한다.
 
+## macOS에서 실행
+
+Docker Desktop, Node.js/npm, uv를 설치하고, 동적 검사에 필요한 Ollama와 모델을 준비한다. 터미널에서 이 워크스페이스로 이동해 최초 한 번 실행 권한을 부여한다.
+
+```bash
+chmod +x run.command stop.command
+```
+
+이후 Finder에서 **`run.command`**를 더블클릭하면 필요한 의존성과 Docker 이미지를 준비하고 대시보드를 연다. **`stop.command`**를 더블클릭하면 종료한다. 터미널에서는 `bash run.sh`와 `bash stop.sh`를 사용할 수도 있다. 진행 중인 동적 검사도 중지되며, Docker Desktop과 Ollama는 계속 실행된다. 오류가 나면 터미널 메시지와 `src/gmail/artifacts/run-backend.log`, `src/dashboard/artifacts/run-dashboard.log`를 확인한다.
+
 ## 폴더
 
 | 폴더 | 내용 |
