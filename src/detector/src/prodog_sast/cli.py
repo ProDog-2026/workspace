@@ -4,9 +4,11 @@ import argparse
 import json
 import sys
 from pathlib import Path
+from typing import Any
 
 from .data import iter_samples
 from .email_text import eml_bytes_to_model_text, fields_to_model_text
+from .language import is_korean
 from .model import (
     DEFAULT_ALPHA,
     DEFAULT_BATCH_SIZE,
@@ -58,8 +60,25 @@ def _train(args: argparse.Namespace) -> int:
     return 0
 
 
+def _score(
+    texts: list[str], tf_model: Path, transformer_model: Path, batch_size: int
+) -> list[dict[str, Any]]:
+    results = predict(load_artifact(tf_model), texts)
+    if transformer_model.exists():
+        return combine_predictions(
+            results,
+            predict_transformer(
+                load_transformer(transformer_model), texts, batch_size=batch_size
+            ),
+        )
+    print(
+        f"warning: Transformer model not found at {transformer_model}; using TF model only",
+        file=sys.stderr,
+    )
+    return results
+
+
 def _scan(args: argparse.Namespace) -> int:
-    artifact = load_artifact(args.model)
     texts: list[str] = []
     names: list[str] = []
     if args.text is not None:
@@ -75,22 +94,30 @@ def _scan(args: argparse.Namespace) -> int:
             texts.append(fields_to_model_text(body_text=raw.decode("utf-8", "replace")))
     if not texts:
         raise ValueError("provide at least one path or --text")
-    results = predict(artifact, texts)
-    transformer_path = Path(args.transformer_model)
-    if transformer_path.exists():
-        transformer = load_transformer(transformer_path)
-        results = combine_predictions(
-            results,
-            predict_transformer(transformer, texts, batch_size=args.transformer_batch_size),
+
+    routes = {
+        "ko": (args.korean_model, args.korean_transformer_model),
+        "en": (args.model, args.transformer_model),
+    }
+    languages = ["ko" if is_korean(text) else "en" for text in texts]
+    results: list[dict[str, Any] | None] = [None] * len(texts)
+    for language, (tf_model, transformer_model) in routes.items():
+        indexes = [i for i, found in enumerate(languages) if found == language]
+        if not indexes:
+            continue
+        scored = _score(
+            [texts[i] for i in indexes],
+            Path(tf_model),
+            Path(transformer_model),
+            args.transformer_batch_size,
         )
-    else:
-        print(
-            f"warning: Transformer model not found at {transformer_path}; using TF model only",
-            file=sys.stderr,
-        )
+        for index, result in zip(indexes, scored, strict=True):
+            results[index] = {"language": language, **result}
+
     rendered = [
         {"source": name, **result}
         for name, result in zip(names, results, strict=True)
+        if result is not None
     ]
     print(json.dumps(rendered, ensure_ascii=False, indent=2))
     if args.fail_on_detect and any(
@@ -131,6 +158,10 @@ def build_parser() -> argparse.ArgumentParser:
     scan_parser.add_argument("--text")
     scan_parser.add_argument("--model", default="models/prompt_injection.joblib")
     scan_parser.add_argument("--transformer-model", default=DEFAULT_MODEL_PATH)
+    scan_parser.add_argument("--korean-model", default="models/korean_tfidf.joblib")
+    scan_parser.add_argument(
+        "--korean-transformer-model", default="models/korean-transformer"
+    )
     scan_parser.add_argument("--transformer-batch-size", type=int, default=16)
     scan_parser.add_argument("--fail-on-detect", action="store_true")
     scan_parser.set_defaults(handler=_scan)
