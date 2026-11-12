@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { TYPES } from './rules'
 import { Badge, CloseIcon, Mark, STATES, fmtShort, fmtTime, stateOf } from './ui'
+import { dynamicLabel } from './dynamicState'
 
 // 항목별 한 줄 설명. "AI는 안 보이는 것도 읽는다"는 목록 위 한 줄(lead)에서 한 번만 말함
 const EXPLAIN = {
@@ -71,7 +72,7 @@ export function MailTable({ rows, onSelect, empty = '해당하는 메일이 없�
             const partial = r.status !== 'ok' && (s === 'danger' || s === 'suspicious')
             return (
               <tr key={r.id} onClick={() => onSelect(r)}>
-                <td className="td-state"><Badge v={s} /></td>
+                <td className="td-state"><Badge v={s} />{r.dynamic && <div className="dynamic-inbox-cell">동적: {dynamicLabel(r.dynamic)}</div>}</td>
                 {/* 클릭은 행(tr)으로 올라감. 버튼은 키보드 접근용 */}
                 <td className="td-subj"><button type="button" className="subj">{r.subject}</button></td>
                 <td className="sender">{r.sender}</td>
@@ -111,6 +112,10 @@ export function VerdictDetail({ r }) {
         <p className="band-state"><Mark v={state} size={20} />{STATES[state].label}</p>
         <p>{SUMMARY[state]}</p>
       </div>
+
+      {r.dynamic && <div className="dynamic-inbox"><b>동적 검사: {dynamicLabel(r.dynamic)}</b>
+        <a href={`#/dynamic?job=${encodeURIComponent(r.dynamic.id)}`}>동적 검사 결과·근거 보기</a>
+      </div>}
 
       <table className="info">
         <tbody>

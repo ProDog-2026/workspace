@@ -1,0 +1,52 @@
+services:
+  control:
+    image: agent-container-control
+    build: ./control-dashboard
+    ports: ["127.0.0.1:8000:8000"]
+    environment:
+      DATA_ROOT: /data/runs
+      EXPERIMENTS_ROOT: /data/experiments
+      WORK_NETWORK: work-net
+      WORK_NET_CIDR: 172.29.80.0/24
+      AGENT_IMAGE: agent-container-worker:phase1
+      RECEIVER_CONTAINER: agent-test-receiver
+      RECEIVER_URL: http://receiver:8080
+      WORKER_LLM_URL: http://control:8001/llm
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./data/runs:/data/runs
+      - ./data/experiments:/data/experiments:ro
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    networks: [default, work-net]
+    depends_on:
+      receiver:
+        condition: service_healthy
+      agent-image:
+        condition: service_completed_successfully
+  receiver:
+    container_name: agent-test-receiver
+    image: agent-container-receiver
+    build:
+      context: ./control-dashboard
+      dockerfile: receiver/Dockerfile
+    networks: [work-net]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health')"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+  agent-image:
+    image: agent-container-worker:phase1
+    build:
+      context: .
+      dockerfile: agent-container/Dockerfile
+    entrypoint: ["python", "-c", "print('Worker image built')"]
+    network_mode: none
+networks:
+  work-net:
+    name: work-net
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.29.80.0/24
+
