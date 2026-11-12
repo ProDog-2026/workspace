@@ -1,0 +1,139 @@
+{
+  "source": "..\\..\\docs\\dataset\\KoPI-Bench_\uc774\uba54\uc77c_\uacf5\uaca9\uc704\uce58.csv",
+  "source_sha256": "b745cb61922bb6352bece2126576233909c86d9001c2da639501d3f4377a8481",
+  "samples": 2806,
+  "labels": {
+    "benign": 1234,
+    "injection": 1572
+  },
+  "models": {
+    "tfidf": {
+      "path": "models/prompt_injection.joblib",
+      "sha256": "72019cb37405c3d38d2b54f2d8b41b848d15b6fd1f822b1653c379157f013dab",
+      "suspicious_threshold": 0.05,
+      "danger_threshold": 0.4144192039966583
+    },
+    "transformer": {
+      "path": "models/quadrat-transformer",
+      "weights_sha256": "331d0023b9fc8e912d257a139bdc013e46e91c60984f69be0c466b79a65779ed",
+      "suspicious_threshold": 0.939322,
+      "danger_threshold": 0.942692
+    }
+  },
+  "evaluations": {
+    "tfidf_only": {
+      "verdict_counts": {
+        "safe": 0,
+        "suspicious": 1844,
+        "danger": 962
+      },
+      "confusion_by_label": {
+        "benign": {
+          "safe": 0,
+          "suspicious": 818,
+          "danger": 416
+        },
+        "injection": {
+          "safe": 0,
+          "suspicious": 1026,
+          "danger": 546
+        }
+      },
+      "review_metrics": {
+        "true_positive": 1572,
+        "false_negative": 0,
+        "false_positive": 1234,
+        "true_negative": 0,
+        "recall": 1.0,
+        "false_positive_rate": 1.0,
+        "precision": 0.5602280826799715
+      },
+      "danger_metrics": {
+        "true_positive": 546,
+        "false_negative": 1026,
+        "false_positive": 416,
+        "true_negative": 818,
+        "recall": 0.3473282442748092,
+        "false_positive_rate": 0.3371150729335494,
+        "precision": 0.5675675675675675
+      }
+    },
+    "transformer_only": {
+      "verdict_counts": {
+        "safe": 2806,
+        "suspicious": 0,
+        "danger": 0
+      },
+      "confusion_by_label": {
+        "benign": {
+          "safe": 1234,
+          "suspicious": 0,
+          "danger": 0
+        },
+        "injection": {
+          "safe": 1572,
+          "suspicious": 0,
+          "danger": 0
+        }
+      },
+      "review_metrics": {
+        "true_positive": 0,
+        "false_negative": 1572,
+        "false_positive": 0,
+        "true_negative": 1234,
+        "recall": 0.0,
+        "false_positive_rate": 0.0,
+        "precision": 0.0
+      },
+      "danger_metrics": {
+        "true_positive": 0,
+        "false_negative": 1572,
+        "false_positive": 0,
+        "true_negative": 1234,
+        "recall": 0.0,
+        "false_positive_rate": 0.0,
+        "precision": 0.0
+      }
+    },
+    "tfidf_transformer_ensemble": {
+      "verdict_counts": {
+        "safe": 0,
+        "suspicious": 1844,
+        "danger": 962
+      },
+      "confusion_by_label": {
+        "benign": {
+          "safe": 0,
+          "suspicious": 818,
+          "danger": 416
+        },
+        "injection": {
+          "safe": 0,
+          "suspicious": 1026,
+          "danger": 546
+        }
+      },
+      "review_metrics": {
+        "true_positive": 1572,
+        "false_negative": 0,
+        "false_positive": 1234,
+        "true_negative": 0,
+        "recall": 1.0,
+        "false_positive_rate": 1.0,
+        "precision": 0.5602280826799715
+      },
+      "danger_metrics": {
+        "true_positive": 546,
+        "false_negative": 1026,
+        "false_positive": 416,
+        "true_negative": 818,
+        "recall": 0.3473282442748092,
+        "false_positive_rate": 0.3371150729335494,
+        "precision": 0.5675675675675675
+      }
+    }
+  },
+  "comparison": {
+    "ensemble_changed_verdicts": 0
+  }
+}
