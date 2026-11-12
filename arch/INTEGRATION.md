@@ -58,10 +58,15 @@ flowchart LR
 ## 정해야 할 것
 
 1. **`scans`의 형태.** `src/dashboard/schema.sql`은 테이블로, `arch/SUPABASE_TABLE.md`는 뷰로 정의한다. 문서가 링크한 `supabase-gmail-schema.sql`은 레포에 없다. (#12)
-2. **판정 값 변환.** 탐지 모델은 `prompt_injection_probability`(0~1)와 `safe|suspicious|danger`를 낸다(#19, 의심 0.05, 위험 0.414419). 대시보드와 Supabase는 0~100 점수를 쓴다. 확률을 점수로 바꾸는 환산식이 없다.
-3. **정적 점수의 출처.** 대시보드 `rules.js`(R01~R07)는 규칙 기반이고 탐지 모델 README는 "수작업 룰은 점수에 쓰지 않는다"고 한다. `static_score`를 어느 쪽이 채울지 정한다.
-4. **로컬 LLM 단계.** 박한빈·이지훈이 `qwen3.5:9b`, `Foundation-Sec-8B`, Jev 중 무엇을 `llm_score`에 쓸지, ML 모델 뒤 2차 판단으로 붙일지 정한다. (#5 완료, #36)
-5. **서버 코드 위치.** 3~4단계를 `src/gmail`에 계속 붙일지, 수집·탐지·저장을 조율하는 `src/server`를 새로 만들지 정한다. 처음에는 `src/gmail`에 붙이고, 파일이 커지거나 담당자가 갈리면 나누는 순서를 제안한다.
+2. **로컬 LLM 단계.** 박한빈·이지훈이 `qwen3.5:9b`, `Foundation-Sec-8B`, Jev 중 무엇을 `llm_score`에 쓸지, ML 모델 뒤 2차 판단으로 붙일지 정한다. (#5 완료, #36)
+3. **서버 코드 위치.** 3~4단계를 `src/gmail`에 계속 붙일지, 수집·탐지·저장을 조율하는 `src/server`를 새로 만들지 정한다. 처음에는 `src/gmail`에 붙이고, 파일이 커지거나 담당자가 갈리면 나누는 순서를 제안한다.
+
+## 확정한 점수 계약
+
+- `static_score = round(prompt_injection_probability * 100)`이다. 표시용 백분율이며 판정을 다시 계산하지 않는다.
+- 실제 `verdict`는 각 탐지 모델의 임계값으로 정한다.
+- 병렬 탐지에서는 최종 판정을 만든 모델의 점수를 쓰고, 같은 판정이면 더 높은 점수를 쓴다.
+- R01~R07은 대시보드 데모에서 근거만 찾으며 `static_score`와 실제 판정에는 사용하지 않는다.
 
 ## 로컬 실행
 

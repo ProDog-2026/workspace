@@ -1,4 +1,4 @@
-// 데모용 정적 탐지. 실제 룰·패턴·가중치는 정적 분석 파트(윤주혁)가 확정하면 교체.
+// 데모용 근거 탐지. 실제 판정과 static_score는 ML 정적 탐지기가 만든다.
 
 export const TYPES = {
   hidden_color: '흰 글씨 (글자색 = 배경색)',
@@ -11,18 +11,14 @@ export const TYPES = {
 }
 
 export const DEFAULT_RULES = [
-  { id: 'R01', type: 'hidden_color', name: 'color:#fff 또는 white 글자 (배경 지정 없음)', weight: 35, on: true },
-  { id: 'R02', type: 'hidden_css', name: 'display:none, font-size:0, opacity:0', weight: 35, on: true },
-  { id: 'R03', type: 'html_comment', name: 'HTML 주석 안 명령형 문장', weight: 30, on: true },
-  { id: 'R04', type: 'zero_width', name: '제로폭 문자 5개 이상', weight: 25, on: true },
-  { id: 'R05', type: 'override', name: '"ignore previous instructions" 계열 문구', weight: 45, on: true },
-  { id: 'R06', type: 'exfil_link', name: '마크다운 이미지, 템플릿 쿼리 URL', weight: 40, on: true },
-  { id: 'R07', type: 'encoded', name: 'Base64 디코딩 결과에 명령문', weight: 35, on: true },
+  { id: 'R01', type: 'hidden_color', name: 'color:#fff 또는 white 글자 (배경 지정 없음)', on: true },
+  { id: 'R02', type: 'hidden_css', name: 'display:none, font-size:0, opacity:0', on: true },
+  { id: 'R03', type: 'html_comment', name: 'HTML 주석 안 명령형 문장', on: true },
+  { id: 'R04', type: 'zero_width', name: '제로폭 문자 5개 이상', on: true },
+  { id: 'R05', type: 'override', name: '"ignore previous instructions" 계열 문구', on: true },
+  { id: 'R06', type: 'exfil_link', name: '마크다운 이미지, 템플릿 쿼리 URL', on: true },
+  { id: 'R07', type: 'encoded', name: 'Base64 디코딩 결과에 명령문', on: true },
 ]
-
-export const DEFAULT_THRESHOLDS = { danger: 70, suspicious: 40 }
-
-export const verdictOf = (score, t) => (score >= t.danger ? 'danger' : score >= t.suspicious ? 'suspicious' : 'safe')
 
 const OVERRIDE = /ignore\s+(all\s+)?(previous|prior|above)\s+(instructions|prompts)|disregard\s+(all\s+)?(previous|prior)|you are now|이전\s*(지시|명령|지침)\S*\s*(무시|잊)|지금부터\s*너는/i
 const COMMAND = /assistant|\bAI\b|ignore|forward|send|reply|요약|전달|보내|출력|무시/i
@@ -71,5 +67,5 @@ export function detect(html, rules) {
   }
 
   const hits = rules.filter((r) => r.on && found[r.type]).map((r) => ({ ...r, snippets: found[r.type] }))
-  return { hits, score: Math.min(100, hits.reduce((s, r) => s + r.weight, 0)) }
+  return { hits }
 }
