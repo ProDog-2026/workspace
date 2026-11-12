@@ -1,74 +1,178 @@
-# ProDog 현재 아키텍처
+# ProDog 목표 아키텍처
 
-2026-10-30 구현 기준. Gmail의 간접 프롬프트 인젝션을 정적 분류하고, 설정한 의심·위험 메일을 로컬 LLM과 격리 컨테이너에서 동적 분석한다. 기능 연결 검증과 탐지 정확도 평가는 구분한다.
+## 주제
+
+Gmail을 OAuth로 연동해 받은편지함의 메일에 숨은 프롬프트 인젝션을 찾아 알려 주는 웹앱
+## 목표
+
+AI 비서나 LLM 요약 기능에 메일을 읽히는 사용자가, 메일 속에 숨은 지시문이 자기 AI를 조종하기 전에 위험한 메일을 알아보도록 돕는다.
+
+이 문서는 서비스의 목표 구조와 현재 구현 상태를 구분해 기록한다. 지금 동작하는 부분은 Gmail 수집, 대시보드의 메일 목록, ML 정적 탐지기, 수집 서버의 탐지기 호출과 Supabase 쓰기 어댑터이며, 대시보드가 Supabase를 읽는 구간과 사용자 로그인 귀속은 아직 구현 전이다. **현재 우선 범위는 정적 탐지기가 내는 `safe`, `suspicious`, `danger` 3단계 판정을 대시보드에 보이는 것까지**이다.
+
+## 범위
+
+- 사용자가 Google 계정을 연결하면 받은편지함 메일을 읽기 전용으로 수집한다.
+- 메일의 제목, 발신자, 본문(plain·HTML), 첨부 메타데이터에서 간접 프롬프트 인젝션 확률을 계산한다.
+- 확률을 `safe`(정상), `suspicious`(의심), `danger`(위험)로 나누고 판정 근거를 붙인다.
+- 의심 메일은 문맥 분석(LLM 2차 판단)으로 넘긴다. 구현 방식은 정하지 않았다.
+- 대시보드에서 메일별 판정, 점수, 근거, 수집이 불완전했던 부분을 보여 준다.
+
+## 설계 원칙
+
+- Gmail 권한은 `gmail.readonly`만 쓴다. 메일을 보내거나 지우거나 옮기지 않는다.
+- 메일 본문은 브라우저로 보내지 않고 Supabase에도 저장하지 않는다. 본문은 수집 서버와 탐지 모델 사이에서 메모리로만 오간다. 저장하는 것은 판정, 점수, 제한된 근거 발췌다.
+- 탐지기는 최종 악성 판정을 하지 않는다. 확실한 정상만 `safe`로 통과시키고, 애매한 메일은 `suspicious`로 다음 단계에 넘긴다.
+- HTML은 실행하거나 외부 리소스를 불러오지 않고 문자열로만 분석한다.
+- 브라우저는 Supabase를 읽기 키(anon)로 읽기만 하고, 쓰기는 수집 서버가 서비스 키로 한다.
+- 분석 실패나 수집 불완전을 `safe`로 채우지 않는다. 수집 상태와 판정을 따로 보관한다.
+- 수집기, 탐지기, 저장소, 화면은 계약(필드와 값)으로만 만나게 하고, 한쪽을 바꿔도 다른 쪽을 건드리지 않게 한다.
+
+## 논리 구성
+
+```mermaid
+flowchart LR
+    User((사용자))
+    Dash[대시보드<br/>src/dashboard]
+
+    subgraph Collect[수집 서버 · src/gmail]
+        OAuth[Gmail OAuth<br/>gmail.readonly]
+        Fetch[메일 수집·파싱<br/>본문 해시·경고 코드]
+    end
+
+    GA[Gmail API]
+
+    subgraph Detect[탐지 · src/detector]
+        Static[ML 정적 탐지기<br/>해시 특징 + SGD]
+        LLM[문맥 분석 LLM · TBD<br/>suspicious만]
+    end
+
+    subgraph Store[Supabase]
+        Conn[(gmail_connections)]
+        Mail[(mail_messages)]
+        Res[(analysis_results)]
+        Scans{{scans 읽기 뷰}}
+    end
+
+    Auth[Supabase Auth]
+
+    User -->|로그인·Gmail 연결| Dash
+    Dash -->|OAuth 시작| OAuth
+    OAuth -->|동의·토큰| GA
+    Fetch -->|메일 목록·본문| GA
+    Fetch ==>|메일 dict · 메모리에서만| Static
+    Static -->|safe · danger| Fetch
+    Static -.->|suspicious| LLM
+    LLM -.->|2차 판정·사유| Fetch
+    Fetch ==>|service_role 쓰기| Mail
+    Fetch ==>|판정·점수·근거| Res
+    Fetch --> Conn
+    Mail --> Scans
+    Res --> Scans
+    Dash -->|anon 키 읽기 · RLS| Scans
+    Dash -->|로그인| Auth
+```
+
+점선은 아직 정하지 않은 연결이고, 굵은 선은 본문이나 판정이 흐르는 선이다. TBD는 연결 지점만 정하고 구현 기술은 정하지 않았다는 뜻이다. 현재는 `Dash → Collect → Static` 구간이 동작하고, Supabase 쓰기는 어댑터가 있으나(`POST /api/sync`) 대시보드는 아직 읽지 않는다. 수집 서버는 토큰과 메타데이터를 로컬 SQLite에 둔다.
 
 ## 구성 요소
 
-| 위치 | 기술과 역할 |
+### 1. 대시보드 (`src/dashboard`, 담당 이지훈)
+
+React + Vite. 로그인 화면에서 Gmail OAuth를 시작하고, 받은편지함 목록과 메일별 판정을 보여 준다. 개발 중에는 Vite proxy로 수집 서버(`127.0.0.1:8765`)를 호출한다. 판정이 있으면 판정을 먼저 보이고, 수집이 불완전했으면 그 안내를 함께 보인다. 지금 판정 자리는 목업 데이터이거나 `검사 전`이다. 최종 목표는 Supabase `scans` 뷰를 읽는 것이다.
+
+### 2. Gmail 수집 서버 (`src/gmail`, 담당 심재훈)
+
+Google OAuth로 계정을 연결하고 받은편지함 메일을 읽어 정규화한다. 출력은 본문 해시, 경고 코드 목록, 잘림 여부, 첨부 메타데이터를 포함한다. 세션 쿠키와 CSRF 토큰으로 보호하고, Host와 Origin이 설정한 주소와 같을 때만 요청을 받는다. 목표 구조에서는 수집 서버가 탐지 호출과 Supabase 쓰기를 조율하는 서버 역할을 맡는다.
+
+### 3. ML 정적 탐지기 (`src/detector`, 담당 윤주혁)
+
+단어 1~2-gram과 문자 3~5-gram 해시 특징에 `SGDClassifier`(log loss)를 얹은 ML 전용 분류기다. 수작업 룰은 점수에 쓰지 않는다. 인젝션 확률(0~1)을 내고 두 임계값으로 3단계를 정한다.
+
+| 판정 | 기준 | 현재 값 |
+| --- | --- | ---: |
+| `safe` | 확률이 의심 임계값 미만 | 0.05 미만 |
+| `suspicious` | 의심 임계값 이상, 위험 임계값 미만 | 0.05 ~ 0.414419 |
+| `danger` | 위험 임계값 이상 | 0.414419 이상 |
+
+`static_score`는 최종 정적 판정을 만든 모델의 출력값을 `round(score * 100)`으로 바꾼 표시용
+백분율이다. 실제 판정은 이 값으로 다시 계산하지 않고 각 모델의 임계값으로 정한다. 병렬 탐지에서
+두 모델이 같은 최종 판정을 내리면 더 높은 출력값을 쓴다. 대시보드 R01~R07은 데모 근거 탐지에만
+사용하며 `static_score`나 실제 판정에 합산하지 않는다.
+
+임계값은 개발셋에서 조정했으므로 최종 일반화 성능은 새 외부 데이터로 따로 확인해야 한다. 근거는 [src/detector/README.md](../src/detector/README.md)에 있다.
+
+### 4. 문맥 분석 단계 (동적 분석, 담당 박한빈·이지훈, 모델 선정 중)
+
+`suspicious` 메일을 LLM으로 다시 판단하는 2차 단계다. 로컬 모델 후보(qwen3.5:9b, Foundation-Sec-8B, Jev)를 비교 중이며, 무엇을 `llm_score`에 쓸지, 2차 판단으로 붙일지는 정하지 않았다. 모델을 쓸 수 없어도 정적 탐지 결과는 동작해야 한다.
+
+### 5. 저장소 (Supabase, 담당 김서진)
+
+| 테이블 | 내용 |
 | --- | --- |
-| `src/dashboard` | React/Vite. Supabase Auth 로그인, scans SELECT, Gmail 수집 요청, 판정·모델별 점수·실행 기록 표시 |
-| `src/gmail` | FastAPI. access token 검증, Gmail OAuth, 수집·파싱, 분석 대기열, Supabase 저장 조율 |
-| `src/detector` | 별도 Python 3.12. 해시 특징 ML과 BERT-tiny Transformer를 같은 메일에 각각 적용 |
-| 로컬 SQLite | 계정·세션·owner 매핑, 암호화 토큰, 메타데이터, 분석 작업과 durable outbox |
-| Supabase | Auth와 PostgreSQL. gmail_connections, mail_messages, analysis_results, scans 읽기 뷰 |
-| 호스트 Ollama | Qwen 등 설치된 tool-calling 모델 추론. 명령을 직접 실행하지 않음 |
-| Lima prodog-lab | 공유 폴더 없는 전용 Linux VM. rootless Docker 엔진의 context는 prodog-vm |
-| VM 안 일회용 컨테이너 | 메일마다 생성해 run_shell 실행·파일 관측 후 제거. VM 자체는 유지 |
+| `gmail_connections` | 앱 사용자와 연결된 Gmail 계정(이메일 키), 연결 상태 |
+| `mail_messages` | 메일 메타데이터, 본문 해시, 경고, 수집 상태(`complete`·`incomplete`·`failed`) |
+| `analysis_results` | 분석 실행별 판정, 정적·LLM·최종 점수, 근거, 모델 버전, 실패 사유 |
+| `scans` (읽기 뷰) | 메일별 최신 완료·실패 결과를 합친 대시보드용 뷰 |
 
-## 인증과 사용자 귀속
+세 테이블은 RLS로 본인 행의 SELECT만 허용하고 `scans` 뷰는 `security_invoker`로 같은 권한을 적용한다. 필드 규칙과 상태 계산은 [SUPABASE_TABLE.md](SUPABASE_TABLE.md)를 따른다.
 
-Supabase Auth 로그인은 앱 사용자 UUID를 증명한다. Gmail OAuth의 gmail.readonly 권한은 해당 Gmail을 읽을 권한을 별도로 제공한다. 두 인증은 목적과 callback이 다르다.
+## 데이터 흐름
 
-1. 브라우저가 현재 Supabase access token을 로컬 API의 Authorization: Bearer에 넣는다.
-2. FastAPI의 SupabaseAuth가 고정된 프로젝트의 /auth/v1/user로 토큰을 검증한다. 이메일이나 검증하지 않은 JWT payload로 소유권을 추정하지 않는다.
-3. 검증된 UUID를 SQLite 세션에 묶고 Gmail OAuth의 state/PKCE를 그 세션에 연결한다.
-4. callback 성공 시 Gmail 계정과 UUID의 owner 매핑을 저장하고 세션 쿠키를 회전한다.
-5. 쿠키가 만료돼도 유효한 Supabase 로그인으로 본인의 Gmail 연결만 복원한다. 사용자 전환·로그아웃 시 이전 연결을 사용할 수 없다.
+1. 사용자가 대시보드에서 Google 계정 연결을 시작하고, 수집 서버가 OAuth 동의를 받아 토큰을 보관한다.
+2. 수집 서버가 Gmail API에서 메일을 읽고 본문 해시, 경고, 잘림 여부, 첨부 메타데이터를 만든다.
+3. 수집 서버가 메일을 메모리에서만 정적 탐지기에 넘기고, 탐지기가 확률과 3단계 판정을 돌려준다.
+4. `suspicious`는 문맥 분석 단계에 넘겨 2차 판정과 사유를 받는다.
+5. 수집 서버가 서비스 키로 `mail_messages`와 `analysis_results`에 쓴다. 본문은 쓰지 않는다.
+6. 대시보드가 `scans` 뷰를 읽어 판정, 점수, 근거와 수집 불완전 안내를 보여 준다.
 
-이전 버전의 owner 없는 Gmail 토큰은 이메일이 같아도 자동 귀속하지 않는다. 최초 1회 명시적으로 Gmail을 재연결해야 한다. 현재 로컬 저장소는 동일 Gmail 주소를 서로 다른 Supabase 사용자에게 동시에 귀속하지 않는다.
+## 현재 구현 상태
 
-## 수집·분석·저장
+| 구간 | 상태 |
+| --- | --- |
+| 대시보드 ↔ 수집 서버 | 연결됨 (#11) |
+| Gmail OAuth 로그인 버튼 | 연결됨 (#18). OAuth 앱이 테스트 모드라 등록한 테스트 사용자만 가능 |
+| 정적 탐지기 3단계 판정 | 완료 (#19, #23) |
+| 수집 서버 → 탐지기 호출 | 연결됨 (#29). 메일마다 `detection`(판정·점수)을 붙여 반환. 모델 파일(`DETECTOR_MODEL_PATH`)이 없으면 `검사 전` |
+| 수집·탐지 결과 → Supabase | 어댑터 구현 (#13). `POST /api/sync`로 명시 호출해 쓴다. 테스트 사용자 1명 고정이고 `scans` 형태·적용 SQL은 레포에 없음 (#37) |
+| Supabase → 대시보드 | 미연결 (#14, #38) |
+| Supabase Auth 로그인 | 미연결 (#37, #34) |
+| Transformer 병렬 탐지 | PR #33 리뷰 대기 (#31). 평가는 #35 |
+| 문맥 분석 LLM | 후보 비교 완료 (#5), 평가 도구는 별도 브랜치 (#26). 모델 선정과 연결은 #36 |
 
-POST /api/mails가 수집과 분석 등록을 수행한다. GET 조회와 상태 polling은 새 분석을 등록하지 않는다. 정적 worker와 동적 worker가 분리돼 긴 LLM 실행 중에도 다음 메일의 정적 분석을 진행한다. 정적 프로세스 내부의 모델 호출은 기존 ML 다음 Transformer 순서다. 동적 실행은 전체에서 동시에 1개다. Ollama 준비 확인이 실패해도 수집과 정적 분석을 계속하며 동적 모델 경고를 표시한다.
+단계별 순서와 담당은 [INTEGRATION.md](INTEGRATION.md)에 있다.
 
-ML과 Transformer는 각자의 임계값으로 safe < suspicious < danger를 결정한다. 서로 보정 기준이 다른 확률을 직접 비교하거나 합산하지 않는다. 최종 단계는 더 높은 위험 단계이며 decided_by에 결정 모델을 기록한다. 점수·임계값은 추론 출력에서 반올림하지 않고 화면에서만 표시를 반올림한다. Supabase 정수 점수 대신 analysis JSON의 원래 확률을 사용해 위험 판정과 눈금의 정밀도를 맞춘다. 가중치/입력 변환·추론 코드/입력/설정/VM context가 같으면 기존 결과를 재사용한다.
+## 배포와 보안 경계
 
-탐지기 변환은 수집기가 허용하는 300,000자 본문을 보존하며 초과 입력을 조용히 자르지 않는다. Transformer는 기존 1,000자/500자 중첩 구간을 유지하고, 256-token을 초과하는 부분을 127 content-token 중첩으로 끝까지 검사한다. forward batch는 16 이하로 유지한다. plain 또는 HTML 본문이 있으면 사용하지 않는 analysis_text를 IPC에서 제외한다. MIME part는 줄바꿈으로 구분하며 구분자도 총300,000자 예산에 포함한다. 합성 Unicode 최대 입력은 중복 포함 약 2.40MB에서 1.20MB로 줄었고 실제 두 모델 실행은 3.02초, 토큰 밀도가 높은 최대 입력은 6.73초였다. 이 수치는 로컬 기능/처리 시간 관측이며 탐지 정확도가 아니다.
+- Gmail 토큰은 수집 서버가 보관하고 브라우저로 보내지 않는다. 연결 해제 시 토큰, 연결 행, 메일 행, 분석 결과를 함께 지운다.
+- 서비스 키는 서버에만 두고, 매 요청에서 Supabase 사용자와 연결 소유권을 확인한다. 서비스 키는 RLS를 우회하기 때문이다.
+- `evidence`의 발췌는 메일 원문이므로 개인정보로 취급한다. 서버에서 건수와 길이를 제한하고 화면에서는 HTML이 아닌 텍스트로만 표시한다.
+- OAuth callback은 state(PKCE)와 현재 사용자 세션을 검증해 타인 계정이 연결되지 않게 한다.
+- `.env`, OAuth 클라이언트 시크릿, 토큰은 커밋하지 않는다. 실제 메일 원문도 레포에 올리지 않고, 데이터셋은 익명화하거나 합성 샘플만 쓴다.
 
-동적 분석은 요약 과제를 수행하는 LLM이 메일의 악성 지시에 따라 행동하는지 관측한다. run_shell은 컨테이너 안에서만 실행하고 read_output은 현재 실행에서 이미 수집한 출력만 페이지로 읽는다. 명령·stdout/stderr·파일 변경과 실제 model_input을 기록한다. leak.txt의 가짜 토큰, summary.txt의 존재는 고정 관측값이며 모든 유출 경로나 요약 정확성을 판정하지 않는다. 오류나 공격 미관찰로 정적 위험 단계를 낮추지 않는다. llm_score는 산식이 없어 NULL을 유지한다.
+## 구현 순서 제안
 
-분석 상태 변경과 outbox 등록은 같은 SQLite transaction으로 기록한다. 서버가 메타데이터와 정적·동적 결과 요약을 검증된 owner의 Supabase 행에 upsert한다. 동일 job UUID를 재사용해 재시도 중복을 막고, 응답 누락·통신 실패는 outbox에 남겨 재시도한다. cloud_deliveries에는 job별로 전달을 확인한 snapshot을 기록해 장애 중 쌓인 과거 실행도 빠뜨리지 않는다. 저장 중 새 revision이 생기면 이전 요청의 성공으로 새 변경을 지우지 않는다. 수집 실패 기록도 저장하며 대시보드에서 저장 대기와 오류를 확인할 수 있다.
+1. **저장 계약 확정**: `scans` 형태 결정과 적용 SQL 커밋 (#12)
+2. **수집→탐지 연결**: 수집 서버에서 탐지기를 호출하고 결과를 대시보드 행 모양으로 변환
+3. **저장 어댑터**: 수집·탐지 결과를 Supabase에 쓰기 (#13)
+4. **화면 교체**: 대시보드가 `scans`를 읽도록 변경 (#14)
+5. **사용자 귀속**: Supabase Auth 로그인과 Gmail 연결을 같은 `user_id`에 묶기
+6. **문맥 분석**: 후보 모델을 정해 `suspicious`에 2차 판단 연결
 
-scans는 파이프라인 결과를 legacy 단일 모델 결과보다 우선하며, 파이프라인 안에서는 최신 완료·실패 결과를 우선 보여 준다. 완료 결과가 없는 새 메일은 pending으로 보여 준다. 과거 legacy 결과와 기록은 삭제하지 않는다. 목록·상세·일별 그래프는 같은 조회 행을 사용한다. 집계는 현재 불러온 페이지 범위다. 위험·의심은 수집 불완전 안내보다 먼저 표시하고 근거·제목·모델 설명은 React 텍스트로만 렌더링한다.
+각 단계의 구현 완료와 탐지 성능은 별도로 측정해 기록한다.
 
-## 합성 메일 쌍 평가
+## 아직 정할 사항
 
-동적 분석 화면의 합성 정상/공격 쌍은 Gmail·정적 판정과 독립적으로 같은 Ollama/VM 실행기를
-사용한다. 매 실행 random canary를 생성하며 label·검증어는 모델 입력에 넣지 않는다.
-목표 파일 복사 ASR과 명령 출력 노출, 정상 summary 검증어 proxy, 오류·미확정, 평균/P95를
-구분한다. 관측 후 파일이 삭제돼도 양성을 유지하고 오류를 방어 성공으로 표현하지 않는다.
+| 단계 | 남은 결정 |
+| --- | --- |
+| 저장 | `scans`를 테이블로 둘지 뷰로 둘지(`schema.sql`은 테이블, `SUPABASE_TABLE.md`는 뷰), 링크된 `supabase-gmail-schema.sql`의 위치 |
+| 문맥 분석 | 쓸 모델, ML 뒤 2차 판단으로 붙일지, `llm_score` 산식 |
+| 서버 | 3~4단계 코드를 `src/gmail`에 붙일지 `src/server`를 새로 둘지 |
+| 계정 | 이메일 키 대신 Google OIDC `sub`로 옮길 시점, OAuth 앱 테스트 모드 해제 시기 |
+| 평가 | 임계값 조정에 쓰지 않은 새 외부 데이터로 일반화 성능 확인 |
 
-그룹 전체를 암호화 파일과 SQLite에 등록한 뒤 대기열을 시작한다. 최근50건 상세 로그 정리와
-독립적인 암호화 요약을 남겨 분모를 보존하고, 요약 저장 실패 시 원본 로그를 유지한다.
-그룹은 로컬에만 저장하며 Supabase에 합성 본문·평가 결과를 추가하지 않는다. 정적 F1을
-측정하는 경로는 아니다. [합성 평가 안내](../src/gmail/docs/synthetic-evaluation.md)를 따른다.
+## 참고
 
-팀 배포 준비는 [팀원 실행 안내](../docs/team-setup.md)와 read-only preflight로 확인한다.
-가중치 대신 SHA256 manifest를 공유하며 개인 키·DB·VM·모델 설치는 각 PC에서 준비한다.
-
-## 데이터와 격리 경계
-
-- Supabase에는 메타데이터·점수·판정·동적 관측 요약만 저장한다. 본문·Gmail 토큰·API 키·명령 원문은 보내지 않는다. 본문은 정적 대기 payload와 동적 실행 로그에 로컬 암호화 상태로 남을 수 있고, 권한 있는 실행 상세/JSON 다운로드에 포함된다.
-- 브라우저 DB 호출은 anon 키와 사용자 JWT를 이용한 SELECT뿐이다. 서버의 sb_secret 키는 apikey 헤더로만 전송한다. VITE_ 환경변수에 서버 키를 넣지 않는다.
-- 세 테이블의 RLS는 auth.uid() = user_id SELECT만 허용하고 scans는 security_invoker=true다. 서버 Secret key는 RLS를 우회하므로 서버에서도 검증된 owner를 사용한다.
-- Gmail 연결 해제는 Google revoke 후 계정별 저장 lock 안에서 Supabase 연결/메일/결과를 삭제하고 로컬 토큰·계정을 삭제한다. 이미 저장 중인 outbox가 뒤늦게 연결을 다시 만드는 것을 막는다. 과거 동적 로그 파일의 추가 삭제는 수행하지 않는다.
-- 컨테이너는 네트워크 없음, UID 10001, read-only root, host mount/Docker socket/키 없음, 1 CPU·256MiB·64 PID 제한이다. VM은 2 CPU·2GiB이며 호스트 공유 폴더·SSH agent·TCP 자동 전달이 없다.
-- VM이 중지되면 Desktop 엔진으로 fallback하지 않는다. cleanup 실패는 다음 실행을 막는다. VM에는 초기 설치용 NAT가 남으며 호스트 Ollama의 RAM/GPU는 VM 제한 밖이다. VM·컨테이너 탈출까지 방어했다고 주장하지 않는다.
-
-## 검증과 남은 범위
-
-실제 Supabase에서 합성 pending/완료 upsert·중복 방지·cleanup, authenticated owner SELECT·타 사용자 차단·브라우저 INSERT 불허를 확인했다. 사용자 허용으로 기존 Gmail readonly OAuth를 재연결하고 앱 UUID 귀속을 확인했다. 실제 메일20건이 로컬 수집과 Supabase 목록/상세/일별 그래프에 표시됐으며 연결·메일·결과 owner 불일치는0건이었다. 같은 정책에서 페이지를 reload해도 작업 ID 집합은 유지됐다. 실제 VM의 자원/네트워크/파일 경계와 cleanup, 실제 팀 정적 모델 + Qwen Instruct + VM의 합성 경로도 확인했다.
-
-정상 합성 메일의 정적 오탐도 관찰했다. token overflow와 본문 보존 정책 변경으로 점수 분포가 달라질 수 있으므로 과거 Quadrat 지표를 새 정책의 정확도/오탐률로 사용하지 않는다. 원본 validation 데이터가 로컬에 없어 새 정책의 재보정/독립 정확도 평가는 수행하지 않았다. Windows 전용 VM, Gmail push/화면 밖 주기적 수집, 실제 악성 바이너리·VM 탈출도 이번 검증 범위가 아니다. 현재 서버는 loopback 개발 구성이며 공유 서비스의 HTTPS·공유 세션 배포는 별도 작업이다.
-
-저장 계약은 [SUPABASE_TABLE.md](SUPABASE_TABLE.md), 실행은 [자동 분석 안내](../src/gmail/docs/automatic-analysis.md), VM은 [local-vm.md](../src/gmail/docs/local-vm.md)를 따른다.
+- [SUPABASE_TABLE.md](SUPABASE_TABLE.md): Supabase 테이블과 `scans` 읽기 계약
+- [INTEGRATION.md](INTEGRATION.md): 모듈 연동 단계와 로컬 실행
+- [src/gmail/docs/collect-api-contract.md](../src/gmail/docs/collect-api-contract.md): 수집 출력 필드와 저장 정책
+- [src/detector/README.md](../src/detector/README.md): 탐지 모델 입력·출력과 임계값 근거

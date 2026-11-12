@@ -17,9 +17,6 @@ ProDog(2026-2 캡스톤)의 코드, 연구 문서, 교수 피드백, 회의 기�
 
 ## 처음 세팅
 
-앱 실행은 [팀원 pull 후 설정·모델·런타임 점검 안내](docs/team-setup.md)를 먼저 따른다.
-현재 공유 브랜치와 `develop` 머지 이후 절차를 구분해 안내한다.
-
 1. `git clone https://github.com/ProDog-2026/<레포이름>.git && cd <레포이름> && git switch develop`
 2. 이 폴더에서 Claude Code나 Codex를 실행하면 팀 스킬과 `AGENTS.md`가 자동으로 적용된다.
 3. `gh auth login`으로 GitHub CLI에 로그인한다. AI가 이슈(할 일)를 읽으려면 필요하다.

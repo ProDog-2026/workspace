@@ -1,7 +1,6 @@
-import { defineConfig, loadEnv } from 'vite'
+import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
-import { browserKey } from './src/scans.js'
 
 // Gmail 수집 모듈(src/gmail). 그 모듈은 Host·Origin 이 APP_BASE_URL 과 같아야 받아 줌
 const GMAIL = 'http://127.0.0.1:8765'
@@ -18,13 +17,7 @@ const toGmail = {
   }),
 }
 
-export default defineConfig(({ mode }) => {
-  const env = loadEnv(mode, process.cwd(), 'VITE_')
-  if (env.VITE_SUPABASE_ANON_KEY && !browserKey(env.VITE_SUPABASE_ANON_KEY)) {
-    throw new Error('VITE_SUPABASE_ANON_KEY에는 anon 키만 허용됩니다. 서버 키를 제거하세요.')
-  }
-  return {
-    plugins: [react(), tailwindcss()],
-    server: { host: HOST, port: PORT, strictPort: true, proxy: { '/api': toGmail, '/oauth': toGmail } },
-  }
+export default defineConfig({
+  plugins: [react(), tailwindcss()],
+  server: { host: HOST, port: PORT, strictPort: true, proxy: { '/api': toGmail, '/oauth': toGmail } },
 })

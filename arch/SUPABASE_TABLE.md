@@ -1,6 +1,6 @@
 # Gmail 수집·Supabase·대시보드 데이터 계약
 
-이 문서는 실제 서버와 대시보드의 저장 계약이다. FastAPI는 Supabase Auth로 검증한 UUID에 Gmail OAuth 연결을 귀속하고, 로컬 SQLite outbox를 통해 수집·분석 결과를 Supabase에 저장한다. 브라우저는 scans를 SELECT한다. `src/dashboard/schema.sql`은 과거 필드 참고용이며 실행하지 않는다.
+이 문서는 이슈 #6의 저장 구조를 `src/gmail/docs/collect-api-contract.md` 및 `src/dashboard/schema.sql`과 맞춘다. 현재 Gmail 모듈은 로컬 SQLite와 자체 세션을 쓰는 프로토타입이다. 아래 매핑은 Supabase Auth와 수집 서버를 연결할 때 적용할 계약이며, 현재 모듈이 이미 Supabase에 쓰고 있다는 뜻이 아니다.
 
 ## 결정 요약
 
@@ -63,10 +63,9 @@
 | `missing_parts` | 수집 경고·첨부 제외를 사용자 문장으로 바꾼 목록 |
 | `status_detail` | 분석 실패 이유 등 사용자에게 보여 줄 안전한 설명 |
 | `model` | 사용한 모델과 버전 |
-| `analysis` | 최대 32KiB JSONB object. job id/status, 모델별 정적 점수·임계값, 동적 관측 요약과 안전한 오류. 원문·명령·토큰 제외 |
 | `created_at` | 실행 생성 시각 |
 
-메일 한 건을 새 설정/입력으로 분석하면 새 job UUID를 만든다. 같은 job의 상태 변경·재시도는 동일 id로 upsert한다. `scans`는 최신 완료/실패를 우선하며 완료 결과가 없으면 최신 pending 또는 분석 전 메타데이터도 표시한다. 진행 중인 행은 기존 완료 결과를 가리지 않는다. 동적 실패가 있어도 완료된 정적 위험 판정은 succeeded/verdict에 유지하고 동적 오류는 analysis에 기록한다. 점수 컬럼은 DB의 정수 0–100 규칙에 맞춰 반올림하며 정적 원래 확률·임계값은 analysis JSON에 남긴다. 화면은 이 원래 확률을 0–100으로 변환해 눈금·모델별 점수와 정밀도를 맞추고, JSON 값이 없는 기존 결과만 정수 컬럼을 사용한다. llm_score는 NULL이다.
+메일 한 건을 여러 번 분석하면 실행별로 새 행을 만든다. `scans` 뷰는 메일별 최신 **완료 또는 실패** 결과 하나를 보여 준다. 진행 중인 행은 기존 완료 결과를 덮어 가리지 않는다.
 
 ## `fetch_status` 계산
 
@@ -90,7 +89,7 @@ DB에는 `fetch_status` 기본값을 두지 않았다. 통합 서버가 위 규�
 | 분석 성공이고 수집 불완전 | `incomplete` |
 | 분석 성공이고 수집 완료 | `ok` |
 
-수집 실패 메일은 분석 행이 없어도 failed로 표시한다. 최초 pending은 verdict=NULL이고 화면에서 검사 전이다. missing_parts는 현재 수집 경고 코드와 첨부/잘림 안내를 포함한다. 값이 비었는데 수집 불완전이면 뷰가 일반 문구를 제공한다. 위험·의심 판정이 있으면 화면은 그 판정을 먼저 표시하고 수집 불완전 안내도 함께 표시한다. 이 우선순위는 `src/dashboard/src/scans.js`의 stateOf와 같다.
+수집 실패 메일은 분석 행이 없어도 `failed`로 표시한다. 분석을 기다리는 정상 수집 메일은 아직 `scans`에 나타나지 않는다. `missing_parts`는 분석 파이프라인이 경고 코드를 사용자 문장으로 바꿔 넣는다. 값이 비었는데 수집 불완전이면 뷰가 일반 문구를 제공한다. 위험·의심 판정이 있으면 화면은 그 판정을 먼저 표시하고, 수집 불완전 안내도 함께 표시한다. 이 우선순위는 `src/dashboard/src/ui.jsx`와 같다.
 
 `evidence.snippet`은 전체 본문이 아니어도 메일 원문 발췌이므로 개인정보다. 서버에서 건수·길이를 제한하고 화면에서는 HTML로 실행하지 않고 텍스트로만 표시한다. 연결 해제 시 분석 결과와 함께 삭제한다.
 
@@ -98,8 +97,8 @@ DB에는 `fetch_status` 기본값을 두지 않았다. 통합 서버가 위 규�
 
 세 저장 테이블은 RLS를 켜고 본인 `user_id` 행의 SELECT만 허용한다. `scans` 뷰는 `security_invoker=true`로 만들고 같은 사용자 권한으로 기초 테이블 RLS를 적용한다. 브라우저 쓰기는 허용하지 않는다. 서버의 서비스 키는 RLS를 우회하므로 매 요청에서 Supabase 사용자와 연결 소유권을 확인한다.
 
-연결 해제 API는 Google 권한 철회 후 계정별 outbox 저장 lock 안에서 본인의 Supabase 연결을 삭제하고 로컬 계정·토큰·메타데이터·outbox를 삭제한다. 연결 삭제는 `gmail_connections → mail_messages → analysis_results`로 연쇄 삭제된다. 저장 중인 요청이 늦게 연결을 다시 생성하지 않게 직렬화한다. 과거 동적 실행 로그 파일은 추가 삭제하지 않는다.
+연결 삭제는 `gmail_connections → mail_messages → analysis_results` 연쇄 삭제로 이어진다. 별도 암호화 토큰 저장소의 토큰 삭제와 Google 권한 철회는 연결 해제 API가 처리해야 한다. 현재 로컬 Gmail 모듈의 SQLite 삭제와 Supabase 삭제는 자동으로 이어지지 않는다.
 
 ## 구현·확인 경계
 
-후속 변경은 [supabase-pipeline-integration.sql](supabase-pipeline-integration.sql)이며 지정 프로젝트의 기존 3개 테이블에 적용했다. 과거 문서가 링크한 기본 schema SQL은 이 checkout에 없다. 후속 SQL은 빈 DB bootstrap용이 아니며 기존 필드/제약/RLS 계약을 전제로 한다. 실제 REST 합성 저장·pending/완료 조회·upsert 중복 방지·삭제, authenticated role의 owner 조회·다른 UUID 차단·INSERT 불허를 확인했다. 합성 행은 cleanup/rollback했다. 실제 Gmail OAuth 후 브라우저에서20건 수집→본인 scans 목록/상세/그래프 표시와 reload 후 중복 방지도 확인했다. RLS를 SQL claims로 확인한 검증을 두 실제 Google 계정 로그인 검증으로 표현하지 않는다.
+지정된 Supabase 프로젝트에는 세 테이블과 `scans` 뷰를 적용했고, 구조·권한을 확인했다. 재현용 SQL은 [supabase-gmail-schema.sql](supabase-gmail-schema.sql)에 있다. 수집 모듈과 Supabase 사이의 서버 어댑터, 실제 Auth 연동, 경고 코드의 화면 문장 변환, 사용자 A/B 접근 검증은 후속 통합 작업이다. 대시보드의 현재 화면은 목업 데이터를 사용하므로 이 뷰를 읽는 프론트 연결도 후속 작업이다.
