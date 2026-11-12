@@ -5,6 +5,7 @@ COPY agent-container/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt && useradd --create-home agent && mkdir /work && chown agent:agent /work
 COPY agent-container/ /app/
 COPY control-dashboard/backend/tool_definitions.json /app/tool_definitions.json
+COPY control-dashboard/backend/mock_tools/ /app/mock_tools/
 USER agent
 WORKDIR /work
 CMD ["python", "/app/main.py"]

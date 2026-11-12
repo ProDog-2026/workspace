@@ -23,6 +23,12 @@ class EmbeddedServer(uvicorn.Server):
         return nullcontext()
 
 
+async def prepare_when_started(servers, manager):
+    while not all(server.started for server in servers):
+        await asyncio.sleep(0.1)
+    await manager.check_environment()
+
+
 async def serve(args):
     if args.dashboard_port == args.worker_port:
         raise ValueError("Dashboard and worker ports must differ")
@@ -53,11 +59,15 @@ async def serve(args):
                            host=args.worker_host, port=args.worker_port, access_log=False)),
         ]
         tasks = [asyncio.create_task(s.serve()) for s in servers]
+        startup_check = asyncio.create_task(prepare_when_started(servers, manager))
         try:
             done, _ = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
             for task in done:
                 task.result()
         finally:
+            manager.closing = True
+            startup_check.cancel()
+            await asyncio.gather(startup_check, return_exceptions=True)
             await manager.close()
             for server in servers:
                 server.should_exit = True

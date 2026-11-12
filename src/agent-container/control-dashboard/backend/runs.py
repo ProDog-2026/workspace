@@ -15,6 +15,8 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from .llm import LLMAdapter, LLMError, ConnectionConfig
 from .evidence import EvidenceStore, event, file_events
+from .environment import EnvironmentFailure
+from .runtime import RuntimeFailure
 from .rules import evaluate
 from .prompts import DEFAULT_PROMPT_ID, PromptStore
 
@@ -56,13 +58,18 @@ class Run:
     temperature: float = 0.1
     prompt_id: str = DEFAULT_PROMPT_ID
     prompt_text: str = ""
+    environment: dict = field(default_factory=dict)
+    context_tokens: int = 0
+    error_code: str | None = None
 
     def public(self):
         return {"run_id": self.id, "status": self.status, "calls": self.calls,
                 "limit_kind": self.limit_kind, "limits": self.limits.model_dump(),
+                "error_code": self.error_code,
                 "connection": self.config.public(), "phase": self.phase,
                 "container_id": self.container_id, "created_at": self.created_at,
                 "temperature": self.temperature, "prompt_version": self.prompt_id,
+                "environment": {k: v for k, v in self.environment.items() if k != "owner"},
                 "subject": self.email.get("subject", ""), "system_monitor": "not_connected",
                 "elapsed_seconds": self.elapsed_seconds if self.elapsed_seconds is not None
                     else round(time.monotonic() - self.started, 2)}
@@ -76,6 +83,62 @@ class RunManager:
         self.runtime = runtime
         self.store = EvidenceStore(data_root) if data_root else None
         self.prompts = PromptStore(Path(data_root) / "prompts.json" if data_root else None)
+        self.environment_lock = asyncio.Lock()
+        self.environment_report = {"ready": False, "error": "environment_unchecked"}
+        self.closing = False
+
+    async def check_environment(self, current=None):
+        async with self.environment_lock:
+            return await self._check_environment(current)
+
+    async def _check_environment(self, current=None):
+        if self.closing:
+            return {"ready": False, "error": "server_stopping"}
+        if any(r.id != current and r.lifecycle and not r.lifecycle.done() for r in self.runs.values()):
+            return {"ready": False, "error": "environment_busy"}
+        prepare = getattr(self.runtime, "prepare", None)
+        if not prepare or self.store is None:
+            return {"ready": False, "error": "docker_runtime_not_configured"}
+        try:
+            work = asyncio.create_task(asyncio.to_thread(
+                prepare, self.store, **({"current": current} if current else {})))
+            try:
+                report = await asyncio.shield(work)
+            except asyncio.CancelledError:
+                # The Docker thread cannot be canceled; keep the lock until it ends.
+                drain = asyncio.gather(work, return_exceptions=True)
+                while not drain.done():
+                    try:
+                        await asyncio.shield(drain)
+                    except asyncio.CancelledError:
+                        continue
+                raise
+        except Exception:
+            report = {"ready": False, "error": "runtime_recovery_failed"}
+        self.environment_report = {k: v for k, v in report.items() if k != "owner"}
+        for run_id in report.get("recovered", []):
+            run = self.runs.get(run_id)
+            if run and (run.lifecycle is None or run.lifecycle.done()):
+                del self.runs[run_id]
+        return report
+
+    async def checked_launch(self, *args, **kwargs):
+        if self.closing:
+            raise RunError("server_stopping", 503)
+        request_id = kwargs.get("request_id")
+        if request_id and self.store and (self.store.directory(request_id) / "request.json").exists():
+            return self.launch(*args, **kwargs)
+        async with self.environment_lock:
+            if self.closing:
+                raise RunError("server_stopping", 503)
+            if request_id and self.store and (self.store.directory(request_id) / "request.json").exists():
+                return self.launch(*args, **kwargs)
+            environment = {}
+            if getattr(self.runtime, "prepare", None):
+                environment = await self._check_environment()
+                if environment.get("ready") is not True:
+                    raise RunError("environment_not_ready")
+            return self.launch(*args, **kwargs, _environment=environment)
 
     def create(self, config, tools, limits=None, temperature=0.1, prompt_id=DEFAULT_PROMPT_ID,
                *, run_id=None):
@@ -120,11 +183,13 @@ class RunManager:
                 raise RunError("request_in_progress")
             run.calls += 1  # Reserve before awaiting I/O; provider failures also count.
             task = asyncio.create_task(self.adapter.chat(
-                copy.deepcopy(messages), run.tools, run.config, run.limits.max_tokens, run.temperature))
+                copy.deepcopy(messages), run.tools, run.config, run.limits.max_tokens, run.temperature,
+                context_tokens=run.context_tokens))
             run.pending = task
             self.record(run, "manager", "llm_request", call_number=run.calls)
         try:
             result = await asyncio.wait_for(task, timeout=remaining)
+            run.context_tokens = (result.usage or {}).get("context_tokens", run.context_tokens)
             self.record(run, "manager", "llm_response", response=result.model_dump())
             if run.status != "running":
                 raise RunError("run_not_running")
@@ -142,19 +207,30 @@ class RunManager:
             run.status, run.limit_kind = "limit_reached", "total_time"
             raise RunError("limit_reached", 429) from None
         except asyncio.CancelledError:
+            code = "run_stopped" if run.status == "stopped" else run.error_code or "runtime_interrupted"
+            self.record(run, "manager", "llm_response", response={
+                "status": "error", "error": code, "tool_calls": []})
             if run.status == "stopped":
                 raise RunError("run_stopped") from None
+            if run.error_code:
+                raise RunError(code, 503) from None
             raise
         except LLMError as exc:
             if run.status == "stopped":
                 raise RunError("run_stopped") from None
-            run.status = "timeout" if exc.code == "provider_timeout" else "error"
+            run.status = "timeout" if exc.code in ("provider_timeout", "long_input_timeout") else "error"
+            run.error_code = exc.code
+            self.record(run, "manager", "llm_response", response={
+                "status": "error", "error": exc.code, "tool_calls": []})
             raise
         finally:
             async with run.lock:
                 run.pending = None
 
     async def close(self):
+        self.closing = True
+        async with self.environment_lock:
+            pass
         for run in self.runs.values():
             if run.lifecycle and not run.lifecycle.done():
                 self.stop(run.id)
@@ -209,7 +285,7 @@ class RunManager:
         return self.view(request_id)
 
     def launch(self, config, tools, email, limits=None, temperature=0.1, prompt_id=DEFAULT_PROMPT_ID,
-               *, request_id=None, expected_prompt_hash=None):
+               *, request_id=None, expected_prompt_hash=None, _environment=None):
         if self.store is None:
             raise RunError("docker_runtime_not_configured", 503)
         limits = limits or Limits()
@@ -233,6 +309,11 @@ class RunManager:
                 raise RunError("request_id_conflict")
         if self.runtime is None:
             raise RunError("docker_runtime_not_configured", 503)
+        if self.closing:
+            raise RunError("server_stopping", 503)
+        if getattr(self.runtime, "prepare", None) and any(
+                r.lifecycle and not r.lifecycle.done() for r in self.runs.values()):
+            raise RunError("environment_not_ready")
         prompt = self.prompts.get(prompt_id)
         if prompt is None:
             raise RunError("prompt_not_found", 422)
@@ -256,6 +337,7 @@ class RunManager:
                 raise RunError("reservation_storage_failed", 503) from None
         info = self.create(config, tools, limits, temperature, prompt_id, run_id=request_id)
         run = self.get(info["run_id"])
+        run.environment = _environment or {}
         run.marker = "MK-" + run.id
         run.email = {k: str(email.get(k, "")).replace("{{MARKER}}", run.marker)
                      for k in ("subject", "body")}
@@ -265,7 +347,14 @@ class RunManager:
 
     async def _execute(self, run):
         files, errors = {}, []
+        recovery_required = False
         try:
+            if getattr(self.runtime, "prepare", None) and not run.environment:
+                run.environment = await self.check_environment(current=run.id)
+                if run.environment.get("ready") is not True:
+                    raise RunError("environment_not_ready")
+            if self.closing:
+                raise RunError("server_stopping", 503)
             files, errors, receipts, exit_code = await self.create_worker_container(run.id)
             await asyncio.sleep(0)  # Drain events scheduled by the Docker thread.
             finals = [e for e in run.events if e.get("event_type") == "final" and e["source"] == "agent"]
@@ -279,21 +368,34 @@ class RunManager:
                 self.record(run, item["source"], item["event_type"], **{
                     k: v for k, v in item.items() if k not in
                     ("run_id", "source", "event_id", "event_type", "occurred_at")})
-        except Exception:
+        except Exception as exc:
+            recovery_required = bool(run.container_id)
+            if isinstance(exc, EnvironmentFailure):
+                run.environment["ready"] = False
+                self.environment_report = {"ready": False, "error": "isolation_check_failed"}
             if run.status not in ("stopped", "timeout"):
                 run.status = "error"
-            errors.append("docker_execution_or_verification_failed")
-            self.record(run, "manager", "runtime_error", error=errors[-1])
+            errors.append(exc.code if isinstance(exc, RuntimeFailure) else
+                          "environment_not_ready" if isinstance(exc, RunError)
+                          and exc.code == "environment_not_ready" else "docker_execution_or_verification_failed")
+            run.error_code = errors[-1]
+            self.record(run, "manager", "runtime_error", error=errors[-1], error_type=type(exc).__name__)
         finally:
             run.token = ""
+            if run.pending and not run.pending.done():
+                run.pending.cancel()
+                await asyncio.gather(run.pending, return_exceptions=True)
+            await asyncio.sleep(0)  # Persist the matching inference failure before saving the run.
         run.elapsed_seconds = round(time.monotonic() - run.started, 2)
         if run.limit_kind == "total_time" and run.status == "limit_reached":
             run.status = "timeout"
         result = {**run.public(), **evaluate(run.events, run.status),
                   "runtime_mode": getattr(self.runtime, "mode", "unverified_runtime"),
+                  "network_isolation": "verified" if run.environment.get("ready") else "unverified",
                   "summary": files.get("summary.txt", ""),
                   "verification_errors": errors,
                   "verification_status": "failed" if errors else "completed",
+                  "recovery_required": recovery_required,
                   "prompt_version": run.prompt_id, "system_prompt": run.prompt_text,
                   "temperature": run.temperature,
                   "test_set_version": "MAIL_CASES_V2"}
@@ -302,10 +404,16 @@ class RunManager:
             self.store.save(run.id, run.events, result | {"phase": "finished"}, result["summary"])
         except OSError:
             run.phase = "storage_error"
+            self.environment_report = {"ready": False, "error": "runtime_recovery_failed"}
             return
+        if recovery_required:
+            self.environment_report = {"ready": False, "error": "runtime_recovery_failed"}
+            run.phase = "finished"
+            return  # An error record does not replace the worker's still-uncollected evidence.
         try:
             await self.cleanup_worker_container(run.id)
         except Exception:
+            self.environment_report = {"ready": False, "error": "runtime_recovery_failed"}
             self.record(run, "manager", "cleanup_failed", error="container_cleanup_failed")
             result["cleanup_error"] = "container_cleanup_failed"
             self.store.save(run.id, run.events, result | {"phase": "finished"}, result["summary"])

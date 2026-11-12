@@ -54,6 +54,7 @@ def test_duplicate_request_reuses_live_run(tmp_path):
                     assert first.json()["run_id"] == duplicate.json()["run_id"] == REQUEST_ID
                     assert duplicate.json()["phase"] == "executing"
                     assert len(manager.runs) == 1
+                    assert len(manager.get(REQUEST_ID).tools) == 38
                     assert "private-key" not in duplicate.text
             finally:
                 runtime.release.set()

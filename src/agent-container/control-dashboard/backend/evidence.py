@@ -57,6 +57,21 @@ class EvidenceStore:
         self.root = Path(root)
         self.root.mkdir(parents=True, exist_ok=True)
 
+    def owner_id(self):
+        path = self.root / ".runtime-owner"
+        try:
+            with path.open("x", encoding="ascii") as handle:
+                handle.write(uuid.uuid4().hex)
+                handle.flush()
+                import os
+                os.fsync(handle.fileno())
+        except FileExistsError:
+            pass
+        owner = path.read_text(encoding="ascii")
+        if len(owner) != 32 or any(c not in "0123456789abcdef" for c in owner):
+            raise ValueError("invalid_runtime_owner")
+        return owner
+
     def directory(self, run_id):
         if len(run_id) != 32 or any(c not in "0123456789abcdef" for c in run_id):
             raise ValueError("invalid_run_id")

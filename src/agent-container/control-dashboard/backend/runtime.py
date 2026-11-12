@@ -5,7 +5,24 @@ import os
 import socket
 import time
 
+from requests.exceptions import ConnectionError as RequestsConnectionError
+from requests.exceptions import ReadTimeout, Timeout
+from urllib3.exceptions import ReadTimeoutError
+
 from .evidence import read_archive
+from .environment import EnvironmentFailure, WORKER_SECURITY, prepare
+
+
+class RuntimeFailure(RuntimeError):
+    def __init__(self, code):
+        self.code = code
+        super().__init__(code)
+
+
+def is_read_timeout(exc):
+    return isinstance(exc, ReadTimeout) or (
+        isinstance(exc, RequestsConnectionError)
+        and any(isinstance(arg, ReadTimeoutError) for arg in exc.args))
 
 
 class DockerRuntime:
@@ -17,15 +34,27 @@ class DockerRuntime:
         self.receiver_url = os.getenv("RECEIVER_URL", "http://receiver:8080")
         self.llm_url = os.getenv("WORKER_LLM_URL", "http://control:8001/llm")
 
+    def prepare(self, store, current=None):
+        import docker
+        client = docker.from_env(timeout=15)
+        try:
+            return prepare(client, store, self.image, self.network, self.llm_url, self.receiver_url, current=current)
+        finally:
+            client.close()
+
     def execute(self, run, emit):
         import docker
+        if run.environment.get("ready") is not True:
+            raise EnvironmentFailure("environment_not_ready")
         client = docker.from_env(timeout=15)
         container = None
         started = dt.datetime.now(dt.timezone.utc)
         files, errors, receipts = {}, [], []
         exit_code = None
         try:
-            client.networks.get(self.network)
+            network = client.networks.get(self.network)
+            if network.id != run.environment.get("network_id") or network.attrs.get("Internal") is not True:
+                raise EnvironmentFailure("network_changed")
             receiver = client.containers.get(self.receiver_name)
             receiver.reload()
             if receiver.status != "running":
@@ -36,10 +65,9 @@ class DockerRuntime:
             if run.status != "running":
                 return {}, [], [], None
             container = client.containers.create(
-                self.image, network=self.network, stdin_open=True, tty=False,
-                auto_remove=False, labels={"agent.run_id": run.id},
-                cap_drop=["ALL"], security_opt=["no-new-privileges:true"],
-                mem_limit="256m", pids_limit=64)
+                run.environment["image_id"], network=self.network, stdin_open=True, tty=False,
+                auto_remove=False, labels={"agent.run_id": run.id, "agent.owner": run.environment["owner"]},
+                **WORKER_SECURITY)
             run.container_id = container.id
             container.start()
             attached = container.attach_socket(params={"stdin": 1, "stream": 1})
@@ -55,8 +83,20 @@ class DockerRuntime:
                 attached.close()
             # Poll logs while waiting so dashboard events are visible during model inference.
             offset = 0
+            poll_timeouts = 0
             while True:
-                logs = container.logs(stdout=True, stderr=False)
+                try:
+                    logs = container.logs(stdout=True, stderr=False)
+                    container.reload()
+                    poll_timeouts = 0
+                except (ReadTimeout, RequestsConnectionError) as exc:
+                    if not is_read_timeout(exc):
+                        raise
+                    poll_timeouts += 1
+                    if (poll_timeouts >= 3 or run.status in ("stopped", "timeout")
+                            or time.monotonic() - run.started >= run.limits.total_seconds):
+                        raise RuntimeFailure("docker_response_timeout") from None
+                    continue
                 lines = logs.splitlines()
                 for line in lines[offset:]:
                     try:
@@ -68,7 +108,6 @@ class DockerRuntime:
                     except (ValueError, TypeError):
                         pass
                 offset = len(lines)
-                container.reload()
                 if container.status in ("exited", "dead"):
                     exit_code = container.attrs["State"]["ExitCode"]
                     break
@@ -84,7 +123,7 @@ class DockerRuntime:
             try:
                 files, archive_errors = read_archive(chunks)
                 errors.extend(archive_errors)
-            except (ValueError, OSError, EOFError) as exc:
+            except (ValueError, OSError, EOFError):
                 errors.append("archive_verification_failed")
             for line in receiver.logs(since=started, stdout=True, stderr=False).splitlines():
                 try:
@@ -97,6 +136,10 @@ class DockerRuntime:
                 except (ValueError, TypeError):
                     continue
             return files, errors, receipts, exit_code
+        except (Timeout, RequestsConnectionError) as exc:
+            if not isinstance(exc, Timeout) and not is_read_timeout(exc):
+                raise
+            raise RuntimeFailure("docker_response_timeout") from None
         finally:
             # Removal is deferred until the manager confirms persistence.
             client.close()
@@ -105,9 +148,20 @@ class DockerRuntime:
         if not container_id:
             return
         import docker
-        client = docker.from_env(timeout=15)
+        from docker.errors import NotFound
+        client = docker.from_env(timeout=60)
         try:
             client.containers.get(container_id).remove(force=True)
+        except NotFound:
+            pass
+        except (ReadTimeout, RequestsConnectionError) as exc:
+            if not is_read_timeout(exc):
+                raise
+            try:
+                client.containers.get(container_id)
+            except NotFound:
+                return
+            raise RuntimeFailure("docker_response_timeout") from None
         finally:
             client.close()
 

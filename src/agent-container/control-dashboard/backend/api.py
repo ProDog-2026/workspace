@@ -15,6 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from .flow import experiment_rows, trace
 from .llm import ConnectionConfig
 from .llm import LLMError
+from .mock_tools import definitions as mock_tool_definitions
 from .prompts import DEFAULT_PROMPT_ID
 from .runs import Limits, RunManager, RunError
 from .worker_api import install_errors
@@ -89,8 +90,8 @@ def create_dashboard_app(manager: RunManager):
         if body.email is not None:
             if not body.email.get("body", "").strip():
                 raise RunError("email_body_required", 422)
-            tools = json.loads(Path(__file__).with_name("tool_definitions.json").read_text(encoding="utf-8"))
-            return manager.launch(config, tools, body.email, body.limits, body.temperature,
+            tools = json.loads(Path(__file__).with_name("tool_definitions.json").read_text(encoding="utf-8")) + mock_tool_definitions()
+            return await manager.checked_launch(config, tools, body.email, body.limits, body.temperature,
                                   body.prompt_id, request_id=body.request_id,
                                   expected_prompt_hash=body.expected_prompt_hash)
         # Manual protocol testing remains available, but credentials stay server-side.
@@ -98,6 +99,15 @@ def create_dashboard_app(manager: RunManager):
             raise RunError("request_id_and_prompt_hash_require_email", 422)
         created = manager.create(config, body.tools, body.limits, body.temperature, body.prompt_id)
         return {k: v for k, v in created.items() if k != "execution_token"}
+
+    @app.get("/environment")
+    async def environment_status():
+        return manager.environment_report
+
+    @app.post("/environment/check")
+    async def check_environment():
+        report = await manager.check_environment()
+        return {k: v for k, v in report.items() if k != "owner"}
 
     @app.get("/prompts")
     async def list_prompts():

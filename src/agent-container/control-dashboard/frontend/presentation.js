@@ -37,10 +37,17 @@
     authentication_failed: "인증에 실패했습니다",
     model_or_endpoint_not_found: "모델 또는 요청 주소를 찾지 못했습니다",
     provider_timeout: "모델 서버 응답 시간이 초과됐습니다",
+    context_limit: "메일과 대화가 로컬 입력 한도 16,384토큰을 초과했습니다. 메모리 과부하를 막기 위해 원문을 자르지 않고 검사를 중단했습니다",
+    long_input_timeout: "긴 입력 처리 중 모델 응답 시간이 초과됐습니다. 호스트 메모리·모델 속도를 확인하세요. 검사는 미완료입니다",
+    docker_response_timeout: "Docker 응답 지연으로 검사를 중단했습니다. 남은 컨테이너의 증거 복구가 필요합니다",
+    runtime_interrupted: "컨테이너 실행 중단으로 모델 요청을 취소했습니다",
     limit_reached: "설정된 실행 한도에 도달했습니다",
     docker_execution_or_verification_failed: "컨테이너 실행 또는 증거 검증에 실패했습니다",
     archive_verification_failed: "작업 파일을 확인하지 못했습니다",
     container_cleanup_failed: "작업 컨테이너를 정리하지 못했습니다",
+    environment_not_ready: "실행 환경 점검을 통과하지 못해 검사를 보류했습니다",
+    controller_interrupted: "제어 서버 중단으로 남은 컨테이너에서 증거를 복구했습니다. 실행 결과는 미확정입니다",
+    execution_outcome_unknown: "접수 후 중단돼 실행 여부를 확인하지 못했습니다. 자동 재실행하지 않습니다",
     unsupported_file_type_or_size: "지원하지 않는 파일 종류이거나 크기 한도를 초과했습니다",
     unsafe_path: "안전하지 않은 파일 경로가 발견됐습니다",
     tool_io_failed: "도구 처리 중 파일 또는 통신 오류가 발생했습니다",
@@ -54,6 +61,7 @@
     simulated: "모의 실행", delivered: "실제 전달", bytes: "크기(바이트)", sha256: "SHA-256",
     query: "쿼리", received_at: "수신 시각", name: "이름", arguments: "인자",
     prompt_tokens: "입력 토큰", completion_tokens: "출력 토큰", total_tokens: "전체 토큰",
+    context_tokens: "확장된 입력창(토큰)",
   };
   const has = (object, key) => Object.prototype.hasOwnProperty.call(object, key);
   const obj = value => value && typeof value === "object" && !Array.isArray(value) ? value : {};
@@ -90,6 +98,9 @@
   function toolLabel(value) {
     const name = present(value) && value !== "" ? String(value) : "이름 없음";
     return has(TOOLS, name) ? TOOLS[name] + " (" + name + ")" : name;
+  }
+  function registerToolLabels(catalog) {
+    for (const item of catalog) TOOLS[item.name] = item.label;
   }
   function limitLabel(value) { return label(LIMITS, value, "정보 없음"); }
 
@@ -240,6 +251,6 @@
     };
   }
 
-  return {formatValue, formatTime, statusLabel, sourceLabel, errorLabel, toolLabel, limitLabel, describeEvent, describeResult};
+  return {formatValue, formatTime, statusLabel, sourceLabel, errorLabel, toolLabel, registerToolLabels, limitLabel, describeEvent, describeResult};
 });
 

@@ -55,6 +55,10 @@ docker compose --project-name agent-container up -d --no-build
 3. 테스트 메일을 입력하고 실행한다. 본문의 `{{MARKER}}`는 실행마다 고유한 표식으로 바뀐다.
 4. 결과를 확인한다.
 
+루트의 `run.command`(Mac) 또는 `run.cmd`(Windows)는 시작 시 잔여 컨테이너 복구와 격리 점검을 수행한다.
+직접 Compose로 실행했다면 `python scripts/check_network.py`로 같은 점검을 실행할 수 있다.
+새 메일 검사도 실행 직전에 같은 점검을 거치며, 실패하면 작업 컨테이너를 만들지 않는다.
+
 ## 대시보드 사용법
 
 | 화면 | 내용 |
@@ -68,6 +72,26 @@ docker compose --project-name agent-container up -d --no-build
 
 **한도 기본값**: 호출 8회 / 응답 2048토큰 / 600초.
 추론형 모델이 길이 제한에 걸리면 응답 예산을 늘리고 **새로 실행**한다 (실제 호스트 확인에서는 8192를 썼다).
+
+**긴 메일**: Ollama가 입력 토큰 초과로 거절하면 필요한 입력·출력 예산에 맞춰 입력창을
+최대 16,384토큰까지 늘려 한 번 재요청한다. OpenAI 호환 API는 입력창 크기를 지정할 수 없어
+이때만 네이티브 `/api/chat`의 `options.num_ctx`를 사용하며, 같은 실행의 후속 호출에도 유지한다.
+과도한 메모리 할당을 줄이기 위해 필요한 크기를 1,024토큰 단위로 올림한다.
+원문·대화는 자르지 않도록 `truncate=false`, `shift=false`를 전달한다. 확장 후에도 넘치면
+`context_limit`으로 미완료 처리하고 화면에 이유를 표시한다. 모델이 지원하는 길이와 호스트 메모리,
+기존 전체 실행 시간 제한은 그대로 적용되므로 모든 길이의 메일 처리를 보장하지 않는다.
+확장된 입력 처리 중 응답 시간이 초과되면 `long_input_timeout`으로 구분한다. Ollama 0.40.15의
+실제 합성 입력으로 6천·1만 토큰의 끝부분 표식까지 확인했지만, 4만8천 토큰은 이 Mac에서 시간 초과됐다.
+51,200토큰 확장은 KV 메모리만 7.2GiB를 사용해 Docker 응답까지 지연시켰다. 따라서 공유
+로컬 환경의 자동 확장을 16K로 제한한다. 초과 메일은 `context_limit`으로 미완료 처리하며,
+전체 분석에는 별도 분할 검사나 충분한 메모리의 실행 환경이 필요하다.
+Docker 조회가 일시적으로 지연되면 최대 3번까지 기다린다. 지연이 지속되면 추론을 취소하고
+증거를 아직 수집하지 못한 컨테이너를 보존한다. **환경 점검·복구**가 로그·작업 파일을 저장한
+뒤 제거하며, 이미 없는 컨테이너의 삭제는 성공으로 취급한다.
+기존 실패 기록은 바꾸지 않으며 수정 적용 후 **현재 설정으로 재검사**한다.
+공식 근거: [Ollama API](https://docs.ollama.com/api/chat),
+[OpenAI 호환 API의 컨텍스트 제한](https://docs.ollama.com/api/openai-compatibility#setting-the-local-context-size),
+[원문 유지 옵션 정의](https://github.com/ollama/ollama/blob/main/api/types.go).
 
 **시스템 프롬프트** (`control-dashboard/backend/prompts.py`)
 
@@ -153,9 +177,11 @@ $env:RUN_DOCKER_TESTS = "1"
 .\.venv\Scripts\python.exe scripts/check_network.py
 ```
 
-`check_network.py`는 작업 네트워크에 진단 컨테이너를 만들어 `8000`·인터넷 연결 **거부**와
-`8001`·receiver 연결 **허용**을 확인하고 `data/network-check.json`에 저장한다.
-검사를 돌리지 않았거나 실패했다면 격리가 검증된 것으로 취급하지 않는다.
+`check_network.py`는 제어 API의 공통 점검을 호출해 `data/network-check.json`에 저장한다.
+진단 컨테이너는 실제 분석과 같은 이미지 ID·작업 네트워크·제한 설정으로 실행된다. 비루트,
+호스트 마운트·Docker 소켓 미노출, 빈 작업 공간, 관리 포트(두 인터페이스)·외부 시험 대상 연결 거부,
+`8001`·receiver 연결 허용을 확인한 뒤 제거한다. DNS 실패나 진단 컨테이너 정리 실패도 통과로 처리하지 않는다.
+검증 범위는 이 시험 대상과 설정이며, 모든 네트워크 경로나 커널 탈출을 검증했다는 뜻은 아니다.
 
 ## 폴더 구조
 
@@ -176,6 +202,7 @@ $env:RUN_DOCKER_TESTS = "1"
 | 하고 싶은 것 | 볼 파일 |
 |---|---|
 | 도구 정의를 바꾸고 싶다 | `control-dashboard/backend/tool_definitions.json` (에이전트 이미지 빌드 때 복사되는 원본) |
+| 추가 모의 도구를 확인·관리하고 싶다 | `control-dashboard/backend/mock_tools/catalog.json` · 설계: `docs/mock-tools-design.md` |
 | 프롬프트를 추가하고 싶다 | `control-dashboard/backend/prompts.py` 또는 대시보드에서 직접 |
 | 새 테스트 메일을 추가하고 싶다 | `tests/cases/`에 JSON 추가 (`id`, `type`, `subject`, `body`, `forbidden_tools`, `must_include`). `tests/test_cases.py`의 개수 검사도 함께 수정 |
 | 이탈·효과 판정 기준을 보고 싶다 | `control-dashboard/backend/rules.py` |
@@ -202,6 +229,11 @@ $env:RUN_DOCKER_TESTS = "1"
   표식은 인증 수단이 아니며, 조작된 프로세스까지 가정한 강한 출처 증명은 아니다.
 - API 키와 실행 토큰은 메모리에만 두고 응답·로그·파일에 저장하지 않는다.
 - 작업 컨테이너는 증거 검증과 저장이 끝난 뒤 제거한다. 저장이 실패하면 **컨테이너를 남겨 둔다**.
+- `data/runs/.runtime-owner`와 작업 컨테이너의 `agent.owner` 라벨로 이 저장소의 실행을 구분한다.
+  재시작·정리 실패 후 점검에서는 소유한 잔여 컨테이너를 먼저 정지하고, 미보관 증거를 `interrupted`·미완료로
+  저장한 뒤 제거한다. 이전 완료 결과는 덮어쓰지 않는다. 저장·정리 실패는 다음 실행을 막는다.
+  구버전 컨테이너는 보관 결과의 컨테이너 ID가 정확히 일치할 때만 처리한다. 소유권 미확인 작업은 삭제하지 않는다.
+  `.runtime-owner`나 기록만 삭제해 차단을 풀지 않는다. 진행 중인 정상 작업은 환경 점검으로 중지하지 않는다.
 - 실행 결과는 `data/runs/<run_id>/`의 `events.jsonl`, `result.json`, `summary.txt`로 저장되고,
   서버를 재시작해도 완료된 결과는 다시 읽는다.
 
@@ -212,6 +244,8 @@ $env:RUN_DOCKER_TESTS = "1"
 | 8000 | `POST /settings` | 연결 설정 저장 (메모리) |
 | 8000 | `POST /connections/check` | 설정으로 도구 왕복 확인 |
 | 8000 | `GET /ollama/models` | Ollama 모델 목록 |
+| 8000 | `GET /environment` | 현재 프로세스에서 확인한 실행 환경 상태 |
+| 8000 | `POST /environment/check` | 소유한 잔여 컨테이너 복구·격리 점검 (모델 추론 없음) |
 | 8000 | `GET·POST /prompts`, `PUT·DELETE /prompts/{id}` | 시스템 프롬프트 관리 |
 | 8000 | `POST /runs` | 실행 생성 (config 또는 settings_id, email, limits, temperature, prompt_id) |
 | 8000 | `GET /runs` | 실행 목록·보관된 결과 |
@@ -249,10 +283,10 @@ $env:RUN_DOCKER_TESTS = "1"
 ## 현재 한계
 
 - 로컬 단일 사용자 전용이다 (로그인·소유자 권한 검사 없음). 공유 서버로 공개하지 않는다.
-- 서버가 비정상 종료됐을 때 진행 중이던 작업의 자동 복구는 없다.
-- 이 코드를 개발한 환경에서는 Docker 엔진 접근이 막혀 있어 **실제 컨테이너 격리·네트워크 차단은 아직 검증되지 않았다.**
-  Docker가 되는 환경에서 `RUN_DOCKER_TESTS=1` 테스트와 `scripts/check_network.py`로 확인해 달라.
-  자세한 상태는 [구현·검증 보고](docs/phase1-implementation-report.md).
+- 서버 중단 후 기존 작업을 이어서 추론하지 않는다. 점검 시 잔여 컨테이너의 증거를 복구하고 결과는 미완료로 남긴다.
+  예약만 남은 작업은 실행 여부 미확정으로 종료하고, 원래 요청 해시를 유지해 같은 ID로 다시 실행하지 않는다.
+- 2026-11-09 Mac Docker Desktop에서 합성 컨테이너로 격리 점검과 중단 작업의 증거 저장·제거를 확인했다.
+  다른 PC에서도 시작 시 점검을 통과해야 한다. Windows 실제 실행과 커널·VM 탈출 시험은 하지 않았다.
 - 모델 간 성능 비교용 대규모 반복 실험은 아직 하지 않았다.
 - Tracee 같은 시스템 호출 감시는 연동하지 않았다 (후속 선택 범위).
 

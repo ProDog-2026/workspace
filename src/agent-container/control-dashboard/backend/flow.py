@@ -176,7 +176,8 @@ def llm_gateway(state, feed):
     return {"llm_calls": state.get("llm_calls", []) + [{
         "call_number": req.get("call_number"), "requested_at": req.get("occurred_at"),
         "responded_at": resp.get("occurred_at"), "finish_reason": response.get("finish_reason"),
-        "status": response.get("status"), "tool_calls": [c.get("name") for c in calls]}],
+        "status": response.get("status"), "error": response.get("error"),
+        "tool_calls": [c.get("name") for c in calls]}],
         "last_tool_calls": calls}
 
 
@@ -326,6 +327,9 @@ def classify(node, delta, state, new_tools):
         if not calls:
             return _outcome("warn", "요청 없음", "더 이상 LLM 요청 없이 에이전트가 끝났습니다 (호출 한도 거절 가능)")
         call = calls[-1]
+        if call.get("status") == "error":
+            return _outcome("fail", "입력 길이 초과" if call.get("error") == "context_limit" else "요청 오류",
+                            call.get("error") or "provider_rejected_request")
         if call.get("status") == "limit_reached" or call.get("finish_reason") == "length":
             return _outcome("fail", "출력 한도", "응답 토큰 한도에 도달했습니다")
         names = ", ".join(call.get("tool_calls") or [])

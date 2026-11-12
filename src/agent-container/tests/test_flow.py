@@ -73,6 +73,17 @@ def test_finished_run_follows_real_events_without_anomalies():
     assert [t["name"] for t in tools_step["state"]["tools"]] == ["read_email", "save_summary"]
 
 
+def test_context_error_has_a_failed_response_not_a_missing_response():
+    events = [ev("manager", "llm_request", call_number=1),
+              ev("manager", "llm_response", response={"status": "error", "error": "context_limit", "tool_calls": []}),
+              ev("agent", "final", completion="error")]
+    run, result = finished(events, completion="error")
+    flow = trace(run, events, result, {})
+    assert flow["anomalies"] == []
+    step = next(s for s in flow["steps"] if s["node"] == "llm_gateway")
+    assert step["outcome"] == {"status": "fail", "label": "입력 길이 초과", "detail": "context_limit"}
+
+
 def test_in_progress_run_stops_at_the_node_waiting_for_its_events():
     events = real_like_events()
     run, _ = finished(events)

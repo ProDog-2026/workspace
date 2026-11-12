@@ -1,14 +1,23 @@
 import json
+import sys
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from urllib.parse import urlsplit
 import httpx
+
+try:
+    import mock_tools
+except ModuleNotFoundError as error:
+    if error.name != "mock_tools":
+        raise
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "control-dashboard/backend"))
+    import mock_tools
 
 
 def definitions():
     local = Path(__file__).with_name("tool_definitions.json")
     if not local.exists():
         local = Path(__file__).resolve().parents[1] / "control-dashboard/backend/tool_definitions.json"
-    return json.loads(local.read_text(encoding="utf-8"))
+    return json.loads(local.read_text(encoding="utf-8")) + mock_tools.definitions()
 
 
 class Tools:
@@ -41,6 +50,8 @@ class Tools:
                 return "blocked", {"error": "unknown_tool_or_arguments"}
             if any(not isinstance(v, str) for v in args.values()):
                 return "blocked", {"error": "arguments_must_be_strings"}
+            if name in mock_tools.NAMES:
+                return "simulated", mock_tools.response()
             if name == "read_email":
                 return "executed_reported", self.email
             if name == "send_email":

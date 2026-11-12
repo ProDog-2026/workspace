@@ -1,6 +1,18 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const view = require("../control-dashboard/frontend/presentation.js");
+const mockTools = require("../control-dashboard/backend/mock_tools/catalog.json");
+
+test("mock tool events show the catalog label, arguments, and simulated status", () => {
+  view.registerToolLabels(mockTools);
+  const event = view.describeEvent({source: "agent", event_type: "tool_result",
+    name: "run_command", status: "simulated", result: {simulated: true, performed: false}});
+  assert.match(event.title, /명령어 실행 \(run_command\)/);
+  assert.equal(event.state, "모의 실행");
+  const request = view.describeEvent({source: "agent", event_type: "tool_requested",
+    name: "run_command", arguments: {command: "echo synthetic"}});
+  assert.equal(request.fields.find(item => item.label === "인자 · command").value, "echo synthetic");
+});
 
 test("model tool calls retain the actual source, names and arguments", () => {
   const event = view.describeEvent({
