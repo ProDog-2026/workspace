@@ -12,7 +12,7 @@ create table scans (
   status           text not null default 'ok' check (status in ('ok', 'incomplete', 'failed')),
   status_detail    text,                           -- 실패 원인 (예: LLM 분석 시간 초과)
   missing_parts    text[] not null default '{}',   -- 수집 못 한 부분 (예: 첨부파일 2개 · 25MB 초과)
-  static_score     int check (static_score between 0 and 100),  -- 정적 분석 (윤주혁), 실패 시 null
+  static_score     int check (static_score between 0 and 100),  -- 최종 정적 모델 출력의 표시용 백분율, 실패 시 null
   llm_score        int check (llm_score between 0 and 100),     -- LLM 동적 분석 (박한빈), 실패 시 null
   final_score      int check (final_score between 0 and 100),   -- 판단 로직 (이지훈), 판정 못 하면 null
   verdict          text check (verdict in ('danger', 'suspicious', 'safe')), -- null = 판정 못 함

@@ -70,7 +70,9 @@ python -m pip install -e ".[dev,transformer]"
 
 두 모델의 확률은 보정 기준이 서로 달라 숫자를 직접 비교하지 않는다. 각 모델이 자기 임계값으로
 내린 `safe`·`suspicious`·`danger`만 비교한다. 결과에는 두 모델의 점수와 최종 판정을 올린
-모델(`decided_by`)을 함께 남긴다. Transformer는 별도 LLM이나 외부 API를 호출하지 않는다.
+모델(`decided_by`)을 함께 남긴다. 최종 `prompt_injection_probability`는 최종 판정을 만든
+모델의 점수이며, 두 모델이 같은 판정이면 더 높은 점수다. Transformer는 별도 LLM이나 외부
+API를 호출하지 않는다.
 
 Quadrat-IPI v1.0.2 중 이메일 27,160건을 원천으로 사용한다. 같은 원본 메일이 학습과 검증에
 동시에 들어가지 않도록 `host_source + host_id` 단위로 분리하며, 학습은 인젝션 4,935건과
@@ -116,7 +118,8 @@ python scripts/train_quadrat_transformer.py
 | 내부 test 전체 | 0.805% |
 | 내부 test 중 LLMail | 0.73% |
 | 내부 test 중 BIPIA(홀드아웃 공격 문구 25종) | 34.7% (26/75) |
-| InjecAgent Gmail(최종 외부 테스트) | 15.3% (19/124) |
+| InjecAgent Gmail(최종 외부 테스트) | 0% (0/124, 정상 사례 없음) |
+| KoPI-Bench 한국어 메일 후보 | 0% (0/1,572), 정상 검토율 100% |
 
 모델과 대용량 데이터는 Git에 올리지 않는다. 운영 모델은
 [Notion 모델 파일 페이지](https://app.notion.com/p/40714dd1c3c48153b351f8fd6c01855d)에서 내려받고,
@@ -165,11 +168,29 @@ prodog-sast train `
 python scripts/evaluate_injecagent.py `
   data/vendor/InjecAgent/data `
   --model models/prompt_injection.joblib `
+  --transformer-model models/quadrat-transformer `
   --output reports/injecagent-gmail-metrics.json
 ```
 
 InjecAgent Gmail 124건은 공격 사례만 있어 정상 오탐률을 계산할 수 없다. 내부 test의 정상
 결과와 함께 제시할 때는 서로 다른 평가셋이라는 점을 반드시 명시한다.
+
+한국어 동작 확인은 KoPI-Bench에서 메일 후보로 선별한 2,806건을 사용한다.
+
+```powershell
+python scripts/evaluate_dataset.py `
+  ../../docs/dataset/KoPI-Bench_이메일_공격위치.csv `
+  --model models/prompt_injection.joblib `
+  --transformer-model models/quadrat-transformer `
+  --output reports/kopi-bench-email-metrics.json
+```
+
+2026-11-02 결합 탐지 최종 결과에서 InjecAgent와 KoPI-Bench 공격은 전부 검토 대상으로
+올렸지만, KoPI-Bench 정상 1,234건도 전부 검토 대상으로 분류했다. 따라서 현재 결합 로직은
+한국어 정상과 공격을 구분하지 못한다. #31 적용 전후 비교에서 최종 판정 변경은 0건이었으며,
+이 단독 구성요소 비교는 원인 진단용이다. 상세 해석은
+[`../../docs/dataset/issue-35-external-evaluation.md`](../../docs/dataset/issue-35-external-evaluation.md)에
+기록한다.
 
 BIPIA는 이전 모델 평가와 임계값 조정에 이미 사용했으므로 더 이상 독립 외부 테스트가 아니다.
 현재는 학습·검증·내부 테스트 데이터에 편입되어 있다. 이전 기준 모델의 BIPIA 결과는
