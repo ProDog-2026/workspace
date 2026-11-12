@@ -26,6 +26,6 @@ def scan_mail(artifact, mail: Mapping[str, Any]) -> dict[str, Any] | None:
         "status": "ok",
         "verdict": result["verdict"],
         "probability": probability,
-        # ponytail: x100 for now; the real 0~1 -> 0~100 mapping is still open (INTEGRATION.md)
+        # Display only; verdict is already fixed by the detector's own thresholds.
         "static_score": round(probability * 100),
     }

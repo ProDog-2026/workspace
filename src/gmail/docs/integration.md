@@ -34,6 +34,11 @@ Google이 갱신 권한을 거부하면 저장 bundle에 `needs_reconnect`를 �
 | `POST /api/disconnect` | 연결 해제 및 Google 권한 철회 | 성공 시 `{"disconnected":true}` |
 | `POST /api/logout` | 로컬 세션 종료 | 성공 시 `{"logged_out":true}` |
 
+정적 탐지기가 설정된 목록 응답의 `detection.static_score`는 최종 정적 판정을 만든 모델 출력값을
+`round(score * 100)`으로 바꾼 표시용 백분율이다. 실제 `detection.verdict`는 각 모델의 임계값으로
+이미 결정된 값이며 대시보드는 `static_score`로 판정을 다시 계산하지 않는다. R01~R07 데모 규칙은
+이 값에 합산하지 않는다.
+
 Google 모드의 목록은 받은편지함만 대상으로 한다. 페이지 토큰은 불투명한 값으로 그대로 다음 요청에 전달한다. 전체 메일 개수로 `result_size_estimate`를 사용하지 않는다. [Gmail 목록 API](https://developers.google.com/workspace/gmail/api/guides/list-messages)
 
 현재 목록 구현도 각 메일을 Gmail `format=raw`로 조회·파싱한 뒤 브라우저에는 메타데이터만 반환한다. 본문을 선택한 순간에만 Google에서 가져오는 구조는 아니다. RAW 응답에는 MIME 첨부 인코딩 데이터도 포함될 수 있지만 첨부파일을 별도 파일로 저장하거나 실행하지 않는다. 목록 지연과 Gmail 요청 수를 줄이려면 후속 버전에서 metadata 조회와 본문 조회를 분리할 수 있다.

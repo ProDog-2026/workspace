@@ -10,7 +10,7 @@ import Login from './Login'
 import Scan from './Scan'
 import Settings from './Settings'
 import States from './States'
-import { DEFAULT_RULES, DEFAULT_THRESHOLDS } from './rules'
+import { DEFAULT_RULES } from './rules'
 import { Logo, ThemeToggle } from './ui'
 
 const MENU = [['', '대시보드'], ['states', '판정 안내'], ['mailbox', '로컬 수집'], ['scan', '메일 검사'], ['experiment', '동적 분석'], ['settings', '설정'], ['admin', '관리자']]
@@ -23,9 +23,8 @@ export default function App() {
   const auth = useAuth()
   const [logoutError, setLogoutError] = useState('')
   const [route, setRoute] = useState(currentRoute)
-  // 관리자 페이지에서 바꾼 룰·기준이 메일 검사 데모에 바로 반영되도록 여기서 들고 있음 (새로고침하면 초기화)
+  // 관리자 페이지에서 바꾼 근거 탐지 룰이 메일 검사 데모에 바로 반영되도록 여기서 들고 있음
   const [rules, setRules] = useState(DEFAULT_RULES)
-  const [thresholds, setThresholds] = useState(DEFAULT_THRESHOLDS)
   const [email, setEmail] = useState(undefined)
   // 상단 연결 주소: 처음과 메뉴를 옮길 때마다 다시 읽음 (설정에서 연결·해제한 결과 반영)
   const loadEmail = () => gmail('/api/session').then((s) => setEmail(s.email)).catch(() => setEmail(null))
@@ -82,11 +81,11 @@ export default function App() {
       </header>
       <main className="page" key={auth.session?.user.id ?? "local"}>
         {logoutError && <p className="note" role="alert">{logoutError}</p>}
-        {route === 'scan' ? <Scan rules={rules} thresholds={thresholds} />
+        {route === 'scan' ? <Scan rules={rules} />
           : route === 'experiment' ? <Experiment />
           : route === 'states' ? <States />
           : route === 'settings' ? <Settings user={auth.session?.user} />
-          : route === 'admin' ? <Admin rules={rules} setRules={setRules} thresholds={thresholds} setThresholds={setThresholds} />
+          : route === 'admin' ? <Admin rules={rules} setRules={setRules} />
           : route === 'mailbox' ? <Dashboard key="local-mailbox" local user={auth.session?.user} />
           : <Dashboard key={auth.session.user.id} user={auth.session.user} />}
       </main>

@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { DETECTOR_NAMES } from './api'
-import { DEFAULT_THRESHOLDS, TYPES } from './rules'
+import { TYPES } from './rules'
 import { Badge, CloseIcon, Mark, STATES, fmtShort, fmtTime, stateOf } from './ui'
 
 // 항목별 한 줄 설명. "AI는 안 보이는 것도 읽는다"는 목록 위 한 줄(lead)에서 한 번만 말함
@@ -131,42 +131,20 @@ export function MailTable({ rows, onSelect, empty = '해당하는 메일이 없�
   )
 }
 
-const orMissing = (v) => v ?? '측정 못 함'
+const orMissing = (v) => v == null ? '측정 못 함' : `${v}%`
 
-function Score({ r, t }) {
-  const s = r.final_score
-  const ensemble = r.analysis?.static?.mode === 'ensemble'
-  const scoreLabel = ensemble ? '판정 결정 모델 점수' : '최종'
+function Score({ r }) {
   return (
-    <>
-      <dl className="scores">
-        <div><dt>{scoreLabel}</dt><dd>{orMissing(s == null ? null : Number(s.toFixed(2)))}</dd></div>
-        <div><dt>정적</dt><dd>{orMissing(r.static_score == null ? null : Number(r.static_score.toFixed(2)))}</dd></div>
-        <div><dt>문맥</dt><dd>{orMissing(r.llm_score)}</dd></div>
-      </dl>
-      {s != null && t && (
-        <div className="meter" role="img" aria-label={`${scoreLabel} ${s}점, 의심 ${t.suspicious}점 이상, 위험 ${t.danger}점 이상`}>
-          <div className="meter-track">
-            <span className="meter-zone warn" style={{ left: `${t.suspicious}%`, width: `${t.danger - t.suspicious}%` }} />
-            <span className="meter-zone danger" style={{ left: `${t.danger}%`, right: 0 }} />
-            <span className="meter-pin" style={{ left: `${s}%` }} />
-          </div>
-          <div className="meter-ticks" aria-hidden="true">
-            <span style={{ left: `${t.suspicious}%` }}>의심 {t.suspicious}</span>
-            <span style={{ left: `${t.danger}%` }}>위험 {t.danger}</span>
-          </div>
-        </div>
-      )}
-      {r.analysis && <p className="sub">{ensemble
-        ? '점수와 눈금은 최종 판정을 결정한 탐지기의 값이며, 모델 점수를 합친 확률이 아니에요. 각 모델의 기준으로 판정한 뒤 가장 높은 위험 단계를 최종 판정으로 사용해요. 모델 간 점수 크기는 비교하지 않아요.'
-        : '최종 점수는 정적 분류기 점수예요.'} 동적 분석은 이 점수와 판정을 낮추지 않아요.</p>}
-      {r.status === 'incomplete' && !r.pending && <p className="sub">가져온 부분만 검사한 점수예요.</p>}
-    </>
+    <dl className="scores">
+      <div><dt>최종</dt><dd>{orMissing(r.final_score)}</dd></div>
+      <div><dt>정적</dt><dd>{orMissing(r.static_score)}</dd></div>
+      <div><dt>문맥</dt><dd>{orMissing(r.llm_score)}</dd></div>
+    </dl>
   )
 }
 
 // 순서: ① 판정 띠(상태색은 여기와 라벨에만) → ② 정보 표 → ③ 할 일 → ④ 찾은 부분
-export function VerdictDetail({ r, thresholds = DEFAULT_THRESHOLDS }) {
+export function VerdictDetail({ r }) {
   const state = stateOf(r)
   const partial = r.status !== 'ok' && (state === 'danger' || state === 'suspicious')
   const advice = partial && r.status === 'incomplete' ? [...ADVICE[state], ADVICE.incomplete[1]] : ADVICE[state]
@@ -231,7 +209,9 @@ export function VerdictDetail({ r, thresholds = DEFAULT_THRESHOLDS }) {
             </td></tr>
           )}
           {(state === 'failed' || r.status === 'failed') && <tr><th scope="row">원인</th><td>{r.status_detail ?? '판정 결과가 없어요.'}</td></tr>}
-          <tr><th scope="row">점수</th><td><Score r={r} t={analysis ? r.static_thresholds : r.source === 'supabase' ? null : thresholds} /></td></tr>
+          {[r.final_score, r.static_score, r.llm_score].some((score) => score != null) && (
+            <tr><th scope="row">탐지 모델 출력</th><td><Score r={r} /></td></tr>
+          )}
         </tbody>
       </table>
 

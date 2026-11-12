@@ -55,7 +55,8 @@
 | `id`, `user_id`, `mail_id` | 실행 UUID, 앱 사용자 UUID, 대상 메일 UUID |
 | `status` | `pending`, `succeeded`, `failed` |
 | `verdict` | `safe`, `suspicious`, `danger`; 미판정이면 NULL |
-| `static_score`, `llm_score`, `final_score` | 대시보드 점수 0–100. 해당 단계가 실패했으면 NULL |
+| `static_score` | 최종 정적 판정을 만든 모델 출력값의 표시용 백분율(`round(score * 100)`). 판정 기준이 아니며 실패 시 NULL |
+| `llm_score`, `final_score` | 대시보드 점수 0–100. 해당 단계가 실패했으면 NULL |
 | `types` | 탐지 유형 코드 목록 |
 | `evidence` | `[{rule,type,snippet}]` 형태의 근거. 제한된 원문 발췌이므로 개인정보로 취급 |
 | `llm_reason` | 문맥 분석 설명. 근거 문장이 없을 수 있음 |

@@ -9,7 +9,7 @@ from typing import Any
 
 from .email_text import fields_to_model_text
 
-LABEL_FIELDS = ("prompt_injection", "label", "is_injection")
+LABEL_FIELDS = ("prompt_injection", "label", "is_injection", "원본 레이블")
 GROUP_FIELDS = ("group_id", "scenario_id", "base_email_id", "team_id", "email_id")
 ROW_GROUP_PREFIX = "row-"
 
@@ -65,9 +65,9 @@ def _label(value: Any) -> int:
     if isinstance(value, (int, float)) and value in (0, 1):
         return int(value)
     normalized = str(value).strip().lower()
-    if normalized in {"1", "true", "yes", "attack", "injection", "malicious"}:
+    if normalized in {"1", "true", "yes", "attack", "injection", "malicious", "인젝션"}:
         return 1
-    if normalized in {"0", "false", "no", "benign", "normal", "clean"}:
+    if normalized in {"0", "false", "no", "benign", "normal", "clean", "정상"}:
         return 0
     raise ValueError(f"unsupported label: {value!r}")
 
@@ -128,7 +128,9 @@ def iter_samples(path: str | Path) -> Iterator[Sample]:
         else:
             text = fields_to_model_text(
                 subject=str(_first(record, ("subject", "title"))),
-                body_text=str(_first(record, ("body_text", "body", "text", "content"))),
+                body_text=str(
+                    _first(record, ("body_text", "body", "text", "content", "전체 원문"))
+                ),
                 body_html=str(_first(record, ("body_html", "html"))),
                 sender=str(_first(record, ("from", "sender"))),
                 reply_to=str(_first(record, ("reply_to", "reply-to"))),

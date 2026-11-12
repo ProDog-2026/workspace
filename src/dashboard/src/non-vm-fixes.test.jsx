@@ -2,7 +2,6 @@ import assert from 'node:assert/strict'
 import { registerHooks } from 'node:module'
 import { mock, test } from 'node:test'
 import { hooks, find } from '../tests/hooks.js'
-import { DEFAULT_RULES, DEFAULT_THRESHOLDS, verdictOf } from './rules'
 import { canaryExposureObserved } from './api.js'
 
 registerHooks({ load(url, context, next) {
@@ -202,76 +201,4 @@ test('changing selection during initialization never reads the stale selection',
   assert.equal(find(h.render(), (node) => node.props?.className === 'mail-test-response').props.children, '새로 선택한 실행의 요약입니다.')
   assert.doesNotMatch(h.markup(), /처음 선택한 실행의 요약입니다/)
   assert.ok(h.calls.every(({ signal }) => !signal.aborted))
-})
-
-async function adminHarness(t) {
-  const h = hooks(t)
-  const { default: Admin } = await import(`./Admin.jsx?non-vm=${sequence++}`)
-  let rules = DEFAULT_RULES, thresholds = DEFAULT_THRESHOLDS
-  const render = () => h.render(Admin, { rules, thresholds, setRules(value) { rules = value }, setThresholds(value) { thresholds = value } })
-  const field = (key) => find(render(), (node) => node.props?.id === key || node.props?.['aria-label'] === key)
-  const change = (key, value) => { field(key).props.onChange({ target: { value } }); render() }
-  render()
-  return { ...h, render, field, change, settings: () => ({ rules, thresholds }) }
-}
-
-test('incomplete and invalid threshold edits stay drafts and cannot make a clean score dangerous', async (t) => {
-  const h = await adminHarness(t)
-  for (const [key, value] of [
-    ['th-danger', ''], ['th-danger', ' '], ['th-danger', '1e'], ['th-danger', 'NaN'],
-    ['th-danger', 'Infinity'], ['th-danger', '-1'], ['th-danger', '101'], ['th-danger', '0'],
-    ['th-danger', '40'], ['th-danger', '39'], ['th-suspicious', ''], ['th-suspicious', '-1'],
-    ['th-suspicious', 'Infinity'], ['th-suspicious', '70'], ['th-suspicious', '101'],
-  ]) {
-    h.change(key, value)
-    assert.deepEqual(h.settings().thresholds, { suspicious: 40, danger: 70 }, `${key}=${value}`)
-    assert.equal(h.field(key).props.value, value, 'keep the raw draft for editing')
-    assert.equal(verdictOf(0, h.settings().thresholds), 'safe')
-    assert.match(h.markup(), /role="alert"/)
-    h.change(key, String(key === 'th-danger' ? 70 : 40))
-  }
-})
-
-test('threshold drafts become effective together once valid, including fractional and boundary values', async (t) => {
-  const h = await adminHarness(t)
-  h.change('th-danger', '30')
-  assert.deepEqual(h.settings().thresholds, { suspicious: 40, danger: 70 })
-  h.change('th-suspicious', '20.5')
-  assert.deepEqual(h.settings().thresholds, { suspicious: 20.5, danger: 30 })
-  assert.equal(verdictOf(25, h.settings().thresholds), 'suspicious')
-  assert.equal(verdictOf(30, h.settings().thresholds), 'danger')
-  h.change('th-danger', '100'); h.change('th-suspicious', '0')
-  assert.deepEqual(h.settings().thresholds, { suspicious: 0, danger: 100 })
-  assert.notEqual(verdictOf(0, h.settings().thresholds), 'danger')
-  assert.doesNotMatch(h.markup(), /role="alert"/)
-})
-
-test('invalid weight drafts never reach shared rules even when toggling a rule', async (t) => {
-  const h = await adminHarness(t)
-  for (const value of ['', ' ', '-', '1e', 'NaN', 'Infinity', '-1', '101']) {
-    h.change('R05 가중치', value)
-    assert.equal(h.settings().rules.find(({ id }) => id === 'R05').weight, 45, value)
-    assert.equal(h.field('R05 가중치').props.value, value)
-    assert.equal(h.field('R05 가중치').props['aria-invalid'], true)
-  }
-  h.field('R05 사용').props.onChange({ target: { checked: false } }); h.render()
-  assert.equal(h.settings().rules.find(({ id }) => id === 'R05').weight, 45)
-  assert.equal(h.settings().rules.find(({ id }) => id === 'R05').on, false)
-  for (const [value, expected] of [['0', 0], ['12.5', 12.5], ['100', 100]]) {
-    h.change('R05 가중치', value)
-    assert.equal(h.settings().rules.find(({ id }) => id === 'R05').weight, expected)
-    assert.equal(h.field('R05 가중치').props['aria-invalid'], false)
-  }
-  assert.deepEqual(h.settings().rules.filter(({ id }) => id !== 'R05'), DEFAULT_RULES.filter(({ id }) => id !== 'R05'))
-})
-
-test('reset clears invalid drafts as well as effective settings', async (t) => {
-  const h = await adminHarness(t)
-  h.change('th-danger', '90'); h.change('R05 가중치', '12')
-  h.change('th-danger', ''); h.change('R05 가중치', '-')
-  button(h.render(), '기본값으로 되돌리기').props.onClick(); h.render()
-  assert.deepEqual(h.settings(), { rules: DEFAULT_RULES, thresholds: DEFAULT_THRESHOLDS })
-  assert.equal(Number(h.field('th-danger').props.value), 70)
-  assert.equal(Number(h.field('R05 가중치').props.value), 45)
-  assert.doesNotMatch(h.markup(), /role="alert"|aria-invalid="true"/)
 })
