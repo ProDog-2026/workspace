@@ -1,5 +1,6 @@
 """Create local settings without printing secrets or replacing an existing .env."""
 
+import os
 from pathlib import Path
 
 from cryptography.fernet import Fernet
@@ -13,6 +14,7 @@ else:
     content = content.replace(
         "TOKEN_ENCRYPTION_KEY=", "TOKEN_ENCRYPTION_KEY=" + Fernet.generate_key().decode()
     )
-    with target.open("x", encoding="utf-8", newline="\n") as file:
+    descriptor = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as file:
         file.write(content)
     print("Created .env with a new encryption key. No secrets printed.")

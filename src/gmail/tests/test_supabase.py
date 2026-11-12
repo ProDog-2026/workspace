@@ -1,4 +1,6 @@
+import asyncio
 import json
+import threading
 import uuid
 
 import httpx
@@ -16,8 +18,17 @@ USER = str(uuid.uuid4())
 KEY = "service-role-secret-value"
 BODY_FIELDS = {"raw", "text_plain", "text_html", "analysis_text"}
 MAIL_COLUMNS = {
-    "user_id", "connection_id", "gmail_id", "subject", "sender", "received_at",
-    "body_hash", "attachments", "warnings", "truncated", "fetch_status",
+    "user_id",
+    "connection_id",
+    "gmail_id",
+    "subject",
+    "sender",
+    "received_at",
+    "body_hash",
+    "attachments",
+    "warnings",
+    "truncated",
+    "fetch_status",
 }
 
 
@@ -26,6 +37,8 @@ class FakeSupabase:
         self.calls, self.fail = [], fail
 
     def __call__(self, request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/auth/v1/user":
+            return httpx.Response(200, json={"id": USER})
         table = request.url.path.rsplit("/", 1)[-1]
         rows = json.loads(request.content) if request.content else None
         self.calls.append((request.method, table, rows, request))
@@ -38,9 +51,9 @@ class FakeSupabase:
         if table == "mail_messages":
             return httpx.Response(
                 201,
-                json=[{"id": f"mail-{i}", "gmail_id": r["gmail_id"]} for i, r in enumerate(rows)],
+                json=[{"id": "mail-" + r["gmail_id"], "gmail_id": r["gmail_id"]} for r in rows],
             )
-        return httpx.Response(201, json=[])
+        return httpx.Response(201, json=rows)
 
     def rows(self, table):
         return [r for _, t, rows, _ in self.calls if t == table for r in (rows or [])]
@@ -52,8 +65,11 @@ def make_client(tmp_path):
 
     def make(fake, configured=True):
         extra = (
-            {"supabase_url": "https://x.supabase.co", "supabase_service_key": KEY,
-             "supabase_user_id": USER}
+            {
+                "supabase_url": "https://x.supabase.co",
+                "supabase_service_key": KEY,
+                "supabase_anon_key": "sb_publishable_test",
+            }
             if configured
             else {}
         )
@@ -66,6 +82,8 @@ def make_client(tmp_path):
         )
         app = create_app(settings, transport=httpx.MockTransport(fake))
         client = TestClient(app, base_url=BASE)
+        if configured:
+            client.headers["Authorization"] = "Bearer verified-test-user"
         client.__enter__()
         clients.append(client)
         post(client, "/api/demo/connect")
@@ -86,10 +104,11 @@ def post(client, path):
     [
         ({"body_hash": None}, "failed"),
         ({"body_hash": "h", "truncated": True, "warnings": [], "attachments": []}, "incomplete"),
-        ({"body_hash": "h", "truncated": False, "warnings": ["w"], "attachments": []},
-         "incomplete"),
-        ({"body_hash": "h", "truncated": False, "warnings": [], "attachments": [{}]},
-         "incomplete"),
+        (
+            {"body_hash": "h", "truncated": False, "warnings": ["w"], "attachments": []},
+            "incomplete",
+        ),
+        ({"body_hash": "h", "truncated": False, "warnings": [], "attachments": [{}]}, "incomplete"),
         ({"body_hash": "h", "truncated": False, "warnings": [], "attachments": []}, "complete"),
     ],
 )
@@ -131,6 +150,23 @@ def test_sync_requires_configuration(make_client):
     assert response.status_code == 503 and not fake.calls
 
 
+def test_sync_requires_connected_account_and_does_not_enqueue_dynamic(make_client, monkeypatch):
+    fake = FakeSupabase()
+    client = make_client(fake)
+
+    def forbidden(*_):
+        pytest.fail("explicit Supabase sync must not enqueue dynamic analysis")
+
+    monkeypatch.setattr(client.app.state.pipeline, "submit", forbidden)
+    assert post(client, "/api/sync").status_code == 200
+    assert fake.rows("mail_messages")
+    assert post(client, "/api/logout").status_code == 200
+    client.headers.pop("authorization", None)
+    count = len(fake.calls)
+    assert post(client, "/api/sync").status_code == 401
+    assert len(fake.calls) == count
+
+
 def test_supabase_failure_does_not_leak_rows_or_key(make_client):
     client = make_client(FakeSupabase(fail=True))
     response = post(client, "/api/sync")
@@ -151,3 +187,34 @@ def test_disconnect_keeps_session_when_supabase_fails(make_client):
     client = make_client(FakeSupabase(fail=True))
     assert post(client, "/api/disconnect").status_code == 502
     assert client.get("/api/session").json()["authenticated"] is True
+
+
+def test_delayed_sync_rechecks_session_after_waiting_for_account_save_lock(make_client):
+    fake = FakeSupabase()
+    client = make_client(fake)
+    entered, release = threading.Event(), threading.Event()
+    with client.app.state.store.connection() as conn:
+        account = conn.execute("SELECT id FROM accounts").fetchone()[0]
+
+    class BusySaveLock:
+        async def __aenter__(self):
+            entered.set()
+            while not release.is_set():
+                await asyncio.sleep(0.001)
+
+        async def __aexit__(self, *_):
+            return False
+
+    client.app.state.cloud.locks[account] = BusySaveLock()
+    responses = []
+    thread = threading.Thread(target=lambda: responses.append(post(client, "/api/sync")))
+    thread.start()
+    try:
+        assert entered.wait(2)
+        assert post(client, "/api/logout").status_code == 200
+    finally:
+        release.set()
+        thread.join(timeout=3)
+    assert not thread.is_alive()
+    assert responses[0].status_code == 401
+    assert not fake.calls

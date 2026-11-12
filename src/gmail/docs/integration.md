@@ -25,7 +25,7 @@ Google이 갱신 권한을 거부하면 저장 bundle에 `needs_reconnect`를 �
 
 | 요청 | 역할 | 응답 핵심 |
 | --- | --- | --- |
-| `GET /api/session` | 현재 세션과 실행 모드 확인 | `authenticated`, `needs_reconnect`, `email`, `csrf_token`, `mode`, `configured` |
+| `GET /api/session` | 현재 세션과 실행 모드 확인 | `authenticated`, `needs_reconnect`, `disconnect_pending`, `email`, `csrf_token`, `mode`, `configured` |
 | `POST /api/demo/connect` | 합성 메일 세션 연결 | 새 세션 정보. 세션 쿠키가 교체되므로 이후 CSRF 값도 다시 확인한다. |
 | `POST /api/oauth/google/start` | Google 동의 흐름 시작 | `authorization_url` |
 | `GET /oauth/google/callback` | Google authorization code 수신 | OAuth 결과를 처리하고 화면으로 복귀한다. 일반 클라이언트가 직접 만드는 URL이 아니다. |

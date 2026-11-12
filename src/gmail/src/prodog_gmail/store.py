@@ -1,3 +1,4 @@
+import asyncio
 import hashlib
 import hmac
 import json
@@ -5,7 +6,7 @@ import secrets
 import sqlite3
 import time
 import uuid
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 
 from cryptography.fernet import Fernet, InvalidToken
 
@@ -17,13 +18,22 @@ def digest(value: str) -> str:
     return hashlib.sha256(value.encode()).hexdigest()
 
 
+def connect_database(path):
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return sqlite3.connect(path, timeout=10)
+    return sqlite3.connect(path, timeout=0)
+
+
 class Store:
-    """Single-machine prototype store. Body text is deliberately absent from the schema."""
+    """Local account/metadata store; pipeline tables can contain encrypted pending mail."""
 
     def __init__(self, settings: Settings):
         self.path = settings.database_path
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.ttl = settings.session_ttl_seconds
+        self.mode = settings.app_mode
         self.key = settings.token_encryption_key.get_secret_value().encode("ascii")
         self.cipher = Fernet(self.key)
         with self.connection() as conn:
@@ -35,6 +45,9 @@ class Store:
                 CREATE TABLE IF NOT EXISTS tokens (
                     account_id TEXT PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
                     encrypted TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS account_deletions (
+                    account_id TEXT PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE
                 );
                 CREATE TABLE IF NOT EXISTS sessions (
                     id_hash TEXT PRIMARY KEY,
@@ -51,40 +64,75 @@ class Store:
                     gmail_message_id TEXT NOT NULL, metadata_json TEXT NOT NULL,
                     updated_at REAL NOT NULL, PRIMARY KEY(account_id, gmail_message_id)
                 );
+                CREATE TABLE IF NOT EXISTS account_owners (
+                    account_id TEXT PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
+                    user_id TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS account_owners_user ON account_owners(user_id);
+                CREATE TABLE IF NOT EXISTS session_users (
+                    session_hash TEXT PRIMARY KEY REFERENCES sessions(id_hash) ON DELETE CASCADE,
+                    user_id TEXT NOT NULL
+                );
             """)
 
     @contextmanager
     def connection(self):
-        conn = sqlite3.connect(self.path, timeout=10)
+        conn = connect_database(self.path)
         conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA foreign_keys=ON")
-        conn.execute("PRAGMA secure_delete=ON")
         try:
+            conn.execute("PRAGMA foreign_keys=ON")
+            conn.execute("PRAGMA secure_delete=ON")
             with conn:
                 yield conn
         finally:
             conn.close()
 
-    def new_session(self, account_id: str | None = None, old: str | None = None) -> str:
+    def new_session(
+        self, account_id: str | None = None, old: str | None = None, *, user_id: str | None = None
+    ) -> str:
         secret = secrets.token_urlsafe(32)
         with self.connection() as conn:
             conn.execute("DELETE FROM sessions WHERE expires_at < ?", (time.time(),))
             conn.execute("DELETE FROM oauth_flows WHERE expires_at < ?", (time.time(),))
             if old:
+                owner = conn.execute(
+                    "SELECT user_id FROM session_users WHERE session_hash=?", (digest(old),)
+                ).fetchone()
+                if user_id is None and owner:
+                    user_id = owner[0]
                 conn.execute("DELETE FROM sessions WHERE id_hash = ?", (digest(old),))
             conn.execute(
                 "INSERT INTO sessions VALUES (?, ?, ?)",
                 (digest(secret), account_id, time.time() + self.ttl),
             )
+            if user_id:
+                conn.execute("INSERT INTO session_users VALUES (?,?)", (digest(secret), user_id))
         return secret
+
+    def account_owner(self, account_id):
+        with self.connection() as conn:
+            row = conn.execute(
+                "SELECT user_id FROM account_owners WHERE account_id=?", (account_id,)
+            ).fetchone()
+        return row[0] if row else None
+
+    def user_session(self, user_id, old=None):
+        with self.connection() as conn:
+            row = conn.execute(
+                "SELECT a.id FROM accounts a JOIN account_owners o ON o.account_id=a.id "
+                "WHERE o.user_id=? AND a.mode=? ORDER BY a.rowid DESC LIMIT 1",
+                (user_id, self.mode),
+            ).fetchone()
+        return self.new_session(row[0] if row else None, old, user_id=user_id)
 
     def session(self, secret: str | None):
         if not secret or len(secret) > 100:
             return None
         with self.connection() as conn:
             row = conn.execute(
-                "SELECT s.*, a.email, a.mode FROM sessions s "
+                "SELECT s.*, a.email, a.mode, u.user_id FROM sessions s "
                 "LEFT JOIN accounts a ON a.id=s.account_id "
+                "LEFT JOIN session_users u ON u.session_hash=s.id_hash "
                 "WHERE s.id_hash=? AND s.expires_at > ?",
                 (digest(secret), time.time()),
             ).fetchone()
@@ -126,28 +174,46 @@ class Store:
         except InvalidToken as exc:
             raise ConnectorError("invalid_state", "새 연결 요청으로 다시 시도해 주세요.") from exc
 
-    def account(self, email: str, mode: str) -> str:
+    def account(self, email: str, mode: str, *, user_id: str | None = None) -> str:
         with self.connection() as conn:
             conn.execute(
                 "INSERT OR IGNORE INTO accounts VALUES (?, ?, ?)",
                 (str(uuid.uuid4()), email.casefold(), mode),
             )
-            return conn.execute(
+            account_id = conn.execute(
                 "SELECT id FROM accounts WHERE email=? AND mode=?", (email.casefold(), mode)
             ).fetchone()["id"]
+            self._require_account(conn, account_id)
+            if user_id:
+                owner = conn.execute(
+                    "SELECT user_id FROM account_owners WHERE account_id=?", (account_id,)
+                ).fetchone()
+                if owner and owner[0] != user_id:
+                    raise ConnectorError("account_owner_mismatch", "연결 소유자가 다릅니다.", 403)
+                conn.execute(
+                    "INSERT OR IGNORE INTO account_owners VALUES (?,?)", (account_id, user_id)
+                )
+            return account_id
 
-    def save_tokens(self, account_id: str, bundle: dict):
+    def save_tokens(self, account_id: str, bundle: dict, *, expected: dict | None = None) -> bool:
         encrypted = self.cipher.encrypt(
             json.dumps({"account_id": account_id, "bundle": bundle}).encode()
         ).decode()
         with self.connection() as conn:
             conn.execute("BEGIN IMMEDIATE")
             self._require_account(conn, account_id)
+            if expected is not None:
+                row = conn.execute(
+                    "SELECT encrypted FROM tokens WHERE account_id=?", (account_id,)
+                ).fetchone()
+                if not row or self._decrypt_tokens(row["encrypted"], account_id) != expected:
+                    return False
             conn.execute(
                 "INSERT INTO tokens VALUES (?, ?) ON CONFLICT(account_id) "
                 "DO UPDATE SET encrypted=excluded.encrypted",
                 (account_id, encrypted),
             )
+            return True
 
     def tokens(self, account_id: str) -> dict | None:
         with self.connection() as conn:
@@ -178,17 +244,21 @@ class Store:
                 is not None
             )
 
-    def invalidate_tokens(self, account_id: str):
+    def invalidate_tokens(self, account_id: str, *, expected: dict | None = None) -> bool:
         # Retain an unusable grant only for explicit revocation/cleanup. Never retry
         # it on reads. A successful new OAuth exchange replaces the entire bundle.
         with self.connection() as conn:
             conn.execute("BEGIN IMMEDIATE")
+            if expected is not None:
+                self._require_account(conn, account_id)
             row = conn.execute(
                 "SELECT encrypted FROM tokens WHERE account_id=?", (account_id,)
             ).fetchone()
             if not row:
-                return
+                return False
             bundle = self._decrypt_tokens(row["encrypted"], account_id)
+            if expected is not None and bundle != expected:
+                return False
             bundle["needs_reconnect"] = True
             encrypted = self.cipher.encrypt(
                 json.dumps({"account_id": account_id, "bundle": bundle}).encode()
@@ -196,12 +266,32 @@ class Store:
             conn.execute(
                 "UPDATE tokens SET encrypted=? WHERE account_id=?", (encrypted, account_id)
             )
+            return True
 
     @staticmethod
     def _require_account(conn, account_id: str):
         if not conn.execute("SELECT 1 FROM accounts WHERE id=?", (account_id,)).fetchone():
             raise ConnectorError(
                 "authentication_required", "연결이 해제되었습니다. 다시 연결해 주세요.", 401
+            )
+        if conn.execute(
+            "SELECT 1 FROM account_deletions WHERE account_id=?", (account_id,)
+        ).fetchone():
+            raise ConnectorError(
+                "account_deleting", "연결 해제 중입니다. 해제를 다시 시도하세요.", 409
+            )
+
+    def start_deletion(self, account_id):
+        with self.connection() as conn:
+            conn.execute("INSERT OR IGNORE INTO account_deletions VALUES (?)", (account_id,))
+
+    def deletion_pending(self, account_id):
+        with self.connection() as conn:
+            return (
+                conn.execute(
+                    "SELECT 1 FROM account_deletions WHERE account_id=?", (account_id,)
+                ).fetchone()
+                is not None
             )
 
     def complete_oauth(self, secret: str, email: str, response: dict, token_builder) -> str:
@@ -213,7 +303,8 @@ class Store:
         with self.connection() as conn:
             conn.execute("BEGIN IMMEDIATE")
             current = conn.execute(
-                "SELECT 1 FROM sessions WHERE id_hash=? AND expires_at>?",
+                "SELECT u.user_id FROM sessions s LEFT JOIN session_users u "
+                "ON u.session_hash=s.id_hash WHERE s.id_hash=? AND s.expires_at>?",
                 (digest(secret), time.time()),
             ).fetchone()
             if not current:
@@ -222,6 +313,16 @@ class Store:
                 "SELECT id FROM accounts WHERE email=? AND mode='google'", (email.casefold(),)
             ).fetchone()
             account_id = row["id"] if row else str(uuid.uuid4())
+            if row:
+                self._require_account(conn, account_id)
+            user_id = current["user_id"]
+            owner = conn.execute(
+                "SELECT user_id FROM account_owners WHERE account_id=?", (account_id,)
+            ).fetchone()
+            if owner and owner[0] != user_id:
+                raise ConnectorError(
+                    "gmail_account_owned", "이 Gmail은 다른 앱 사용자에게 연결되어 있습니다.", 409
+                )
             saved = conn.execute(
                 "SELECT encrypted FROM tokens WHERE account_id=?", (account_id,)
             ).fetchone()
@@ -234,6 +335,10 @@ class Store:
                 conn.execute(
                     "INSERT INTO accounts VALUES (?, ?, 'google')", (account_id, email.casefold())
                 )
+            if user_id:
+                conn.execute(
+                    "INSERT OR IGNORE INTO account_owners VALUES (?,?)", (account_id, user_id)
+                )
             conn.execute(
                 "INSERT INTO tokens VALUES (?, ?) ON CONFLICT(account_id) "
                 "DO UPDATE SET encrypted=excluded.encrypted",
@@ -245,9 +350,11 @@ class Store:
                 "INSERT INTO sessions VALUES (?, ?, ?)",
                 (digest(new), account_id, time.time() + self.ttl),
             )
+            if user_id:
+                conn.execute("INSERT INTO session_users VALUES (?,?)", (digest(new), user_id))
             return new
 
-    def save_metadata(self, account_id: str, metadata: dict):
+    def save_metadata(self, account_id: str, metadata: dict, *, conn=None):
         # Explicit allowlist prevents accidental future persistence of raw/analysis body fields.
         keys = {
             "id",
@@ -263,8 +370,11 @@ class Store:
             "attachments",
         }
         safe = {k: v for k, v in metadata.items() if k in keys}
-        with self.connection() as conn:
-            conn.execute("BEGIN IMMEDIATE")
+        owns_transaction = conn is None
+        transaction = self.connection() if owns_transaction else nullcontext(conn)
+        with transaction as conn:
+            if owns_transaction:
+                conn.execute("BEGIN IMMEDIATE")
             self._require_account(conn, account_id)
             conn.execute(
                 "INSERT INTO mails VALUES (?, ?, ?, ?) "

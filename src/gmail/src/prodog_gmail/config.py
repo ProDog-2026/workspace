@@ -26,10 +26,16 @@ class Settings(BaseSettings):
     detector_model_path: Path | None = None
     # Server-side writes only. service_role bypasses RLS, so this key never reaches the browser.
     supabase_url: str = ""
+    supabase_anon_key: str = ""
     supabase_service_key: SecretStr = SecretStr("")
-    # Demo stage: every connection is filed under one test user until Supabase Auth is wired (#6).
-    supabase_user_id: str = ""
     session_ttl_seconds: int = Field(default=28800, ge=300, le=86400)
+    experiments_enabled: bool = True
+    sandbox_docker_context: str = Field(default="", pattern=r"^$|^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
+    ollama_model: str = ""
+    static_python: Path | None = None
+    static_model_path: Path | None = None
+    groq_api_key: SecretStr = SecretStr("")
+    openrouter_api_key: SecretStr = SecretStr("")
 
     @model_validator(mode="after")
     def validate_config(self):
@@ -49,10 +55,36 @@ class Settings(BaseSettings):
                 or url.query
                 or url.fragment
             ):
-                raise ValueError(
-                    f"This local prototype requires a loopback http {name.upper()}"
-                )
+                raise ValueError(f"This local prototype requires a loopback http {name.upper()}")
             setattr(self, name, value.rstrip("/"))
+        if (
+            self.supabase_url
+            or self.supabase_anon_key
+            or self.supabase_service_key.get_secret_value()
+        ) and not self.supabase_auth_configured:
+            raise ValueError("Set SUPABASE_URL and SUPABASE_ANON_KEY together")
+        if self.supabase_url:
+            try:
+                url = urlsplit(self.supabase_url)
+                valid_origin = (
+                    url.scheme == "https"
+                    and bool(url.hostname)
+                    and url.username is None
+                    and url.password is None
+                    and url.path in {"", "/"}
+                    and "?" not in self.supabase_url
+                    and "#" not in self.supabase_url
+                    and "\\" not in self.supabase_url
+                    and (url.port is None or url.port > 0)
+                    and not any(
+                        char.isspace() or ord(char) < 32 or ord(char) == 127
+                        for char in self.supabase_url
+                    )
+                )
+            except ValueError:
+                valid_origin = False
+            if not valid_origin:
+                raise ValueError("SUPABASE_URL must be an HTTPS origin")
         try:
             Fernet(self.token_encryption_key.get_secret_value().encode("ascii"))
         except (ValueError, UnicodeError) as exc:
@@ -61,11 +93,11 @@ class Settings(BaseSettings):
 
     @property
     def supabase_configured(self) -> bool:
-        return bool(
-            self.supabase_url
-            and self.supabase_service_key.get_secret_value()
-            and self.supabase_user_id
-        )
+        return bool(self.supabase_auth_configured and self.supabase_service_key.get_secret_value())
+
+    @property
+    def supabase_auth_configured(self) -> bool:
+        return bool(self.supabase_url and self.supabase_anon_key)
 
     @property
     def google_configured(self) -> bool:

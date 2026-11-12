@@ -1,6 +1,7 @@
 import asyncio
 import hmac
 import re
+import sqlite3
 import time
 from collections import defaultdict, deque
 from contextlib import asynccontextmanager
@@ -13,13 +14,17 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
+from .auth import SupabaseAuth
+from .cloud_sync import CloudSync
 from .config import Settings, get_settings
 from .demo import demo_messages
-from .errors import ConnectorError
+from .errors import ConnectorError, database_busy
+from .experiments import Experiments, register_experiments
 from .google import GoogleClient
 from .mail import mail_metadata, parse_gmail_message
+from .pipeline import MailPipeline, register_pipeline
 from .scan import load_detector, scan_mail
-from .store import Store
+from .store import Store, digest
 from .supabase import Supabase
 
 COOKIE = "prodog_session"
@@ -41,10 +46,25 @@ def create_app(settings: Settings | None = None, transport=None) -> FastAPI:
             transport=transport,
         ) as client:
             application.state.google = GoogleClient(config, application.state.store, client)
+            application.state.auth = SupabaseAuth(config, client)
             application.state.supabase = (
                 Supabase(config, client) if config.supabase_configured else None
             )
-            yield
+            application.state.experiments = Experiments(config)
+            application.state.pipeline = MailPipeline(
+                config, application.state.store, application.state.experiments
+            )
+            application.state.cloud = CloudSync(application.state.store, application.state.supabase)
+            application.state.pipeline.cloud = application.state.cloud
+            await application.state.experiments.open()
+            await application.state.pipeline.open()
+            await application.state.cloud.open()
+            try:
+                yield
+            finally:
+                await application.state.pipeline.close()
+                await application.state.experiments.close()
+                await application.state.cloud.close()
 
     application = FastAPI(
         title="ProDog Gmail connector",
@@ -58,6 +78,17 @@ def create_app(settings: Settings | None = None, transport=None) -> FastAPI:
     def session(request: Request, *, required=False):
         secret = request.cookies.get(COOKIE)
         current = application.state.store.session(secret)
+        if application.state.settings.supabase_auth_configured and current:
+            user_id = getattr(request.state, "user_id", None)
+            callback = request.url.path == "/oauth/google/callback"
+            if not current["user_id"] or (not callback and current["user_id"] != user_id):
+                current = None
+            elif (
+                current["account_id"]
+                and application.state.store.account_owner(current["account_id"])
+                != current["user_id"]
+            ):
+                current = None
         if required and (
             not current
             or not current["account_id"]
@@ -111,13 +142,24 @@ def create_app(settings: Settings | None = None, transport=None) -> FastAPI:
             if authenticated and config.app_mode == "google"
             else None
         )
+        if bundle and bundle.get("needs_reconnect"):
+            application.state.pipeline.cancel_account(current["account_id"])
         return {
             "authenticated": authenticated,
             "needs_reconnect": bool(bundle and bundle.get("needs_reconnect")),
+            "disconnect_pending": bool(
+                current
+                and current["account_id"]
+                and application.state.store.deletion_pending(current["account_id"])
+            ),
             "email": current["email"] if authenticated else None,
             "csrf_token": application.state.store.csrf(secret),
             "mode": config.app_mode,
             "configured": config.google_configured if config.app_mode == "google" else True,
+            "user_id": current["user_id"] if current else None,
+            "app_auth_required": config.supabase_auth_configured,
+            "cloud_configured": config.supabase_configured,
+            "cloud": application.state.cloud.status(current["account_id"] if current else None),
         }
 
     def limit_requests(secret: str, action: str, maximum: int):
@@ -142,7 +184,21 @@ def create_app(settings: Settings | None = None, transport=None) -> FastAPI:
                 {"error": {"code": "invalid_host", "message": "설정된 로컬 주소로 접속하세요."}},
                 status_code=400,
             )
-        response = await call_next(request)
+        request.state.user_id = None
+        try:
+            if application.state.settings.supabase_auth_configured and request.url.path.startswith(
+                "/api/"
+            ):
+                request.state.user_id = await application.state.auth.verify(
+                    request.headers.get("authorization")
+                )
+                if request.url.path != "/api/session" and not request.state.user_id:
+                    raise ConnectorError("app_auth_required", "먼저 앱에 로그인하세요.", 401)
+            response = await call_next(request)
+        except ConnectorError as exc:
+            response = JSONResponse(
+                {"error": {"code": exc.code, "message": exc.message}}, status_code=exc.status
+            )
         response.headers.update(
             {
                 "Cache-Control": "no-store",
@@ -162,6 +218,10 @@ def create_app(settings: Settings | None = None, transport=None) -> FastAPI:
 
     @application.exception_handler(ConnectorError)
     async def connector_error(request, exc):
+        if exc.code == "reconnect_required":
+            current = application.state.store.session(request.cookies.get(COOKIE))
+            if current and current["account_id"]:
+                application.state.pipeline.cancel_account(current["account_id"])
         return JSONResponse(
             {"error": {"code": exc.code, "message": exc.message}}, status_code=exc.status
         )
@@ -172,6 +232,21 @@ def create_app(settings: Settings | None = None, transport=None) -> FastAPI:
         return JSONResponse(
             {"error": {"code": "invalid_request", "message": "요청 형식을 확인해 주세요."}},
             status_code=422,
+        )
+
+    @application.exception_handler(sqlite3.OperationalError)
+    async def database_error(request, exc):
+        if not database_busy(exc):
+            raise exc
+        return JSONResponse(
+            {
+                "error": {
+                    "code": "database_busy",
+                    "message": "저장소가 사용 중입니다. 잠시 후 다시 시도하세요.",
+                }
+            },
+            status_code=503,
+            headers={"Retry-After": "1"},
         )
 
     @application.get("/")
@@ -185,8 +260,23 @@ def create_app(settings: Settings | None = None, transport=None) -> FastAPI:
     @application.get("/api/session")
     async def get_session(request: Request):
         secret, current = session(request)
+        previous = application.state.store.session(request.cookies.get(COOKIE))
+        user_id = getattr(request.state, "user_id", None)
+        if (
+            application.state.settings.supabase_auth_configured
+            and previous
+            and previous["user_id"]
+            and not user_id
+        ):
+            raise ConnectorError("app_auth_required", "먼저 앱에 로그인하세요.", 401)
         if not current:
-            secret = application.state.store.new_session()
+            if previous and previous["account_id"]:
+                application.state.pipeline.cancel_account(previous["account_id"])
+            secret = (
+                application.state.store.user_session(user_id, old=secret)
+                if user_id
+                else application.state.store.new_session(old=secret, user_id="")
+            )
         response = JSONResponse(session_payload(secret))
         if not current:
             set_cookie(response, secret)
@@ -199,7 +289,11 @@ def create_app(settings: Settings | None = None, transport=None) -> FastAPI:
             raise ConnectorError(
                 "demo_disabled", "실제 Google 연결 모드에서는 데모를 사용할 수 없습니다.", 404
             )
-        account_id = application.state.store.account("demo@prodog.invalid", "demo")
+        user_id = getattr(request.state, "user_id", None)
+        if application.state.settings.supabase_auth_configured and not user_id:
+            raise ConnectorError("app_auth_required", "먼저 앱에 로그인하세요.", 401)
+        email = f"demo-{user_id}@prodog.invalid" if user_id else "demo@prodog.invalid"
+        account_id = application.state.store.account(email, "demo", user_id=user_id)
         new = application.state.store.new_session(account_id, old=secret)
         response = JSONResponse(session_payload(new))
         set_cookie(response, new)
@@ -207,8 +301,10 @@ def create_app(settings: Settings | None = None, transport=None) -> FastAPI:
 
     @application.post("/api/oauth/google/start")
     async def start_google(request: Request):
-        secret, _ = csrf(request)
         config = application.state.settings
+        if config.supabase_auth_configured and not getattr(request.state, "user_id", None):
+            raise ConnectorError("app_auth_required", "먼저 앱에 로그인하세요.", 401)
+        secret, _ = csrf(request)
         if config.app_mode != "google" or not config.google_configured:
             raise ConnectorError(
                 "google_not_configured", "Google OAuth 설정 후 서버를 다시 시작하세요.", 503
@@ -256,6 +352,8 @@ def create_app(settings: Settings | None = None, transport=None) -> FastAPI:
     async def get_mail(current: dict, message_id: str):
         if not MESSAGE_ID.fullmatch(message_id):
             raise ConnectorError("invalid_message_id", "올바른 메일 ID가 아닙니다.")
+        with application.state.store.connection() as conn:
+            application.state.store._require_account(conn, current["account_id"])
         if current["mode"] == "demo":
             raw = next((m for m in demo_messages() if m["id"] == message_id), None)
             if raw is None:
@@ -266,7 +364,9 @@ def create_app(settings: Settings | None = None, transport=None) -> FastAPI:
         application.state.store.save_metadata(current["account_id"], mail_metadata(parsed))
         return parsed
 
-    async def load_page(current: dict, limit: int, page_token: str | None):
+    async def load_page(
+        current: dict, limit: int, page_token: str | None, *, collection_secret: str | None = None
+    ):
         if current["mode"] == "demo":
             try:
                 start = int(page_token or "0")
@@ -290,15 +390,22 @@ def create_app(settings: Settings | None = None, transport=None) -> FastAPI:
             async with semaphore:
                 try:
                     parsed = await get_mail(current, message_id)
-                    return {
-                        **mail_metadata(parsed),
-                        "detection": scan_mail(application.state.detector, parsed),
-                    }
+                    metadata = mail_metadata(parsed)
+                    metadata["detection"] = (
+                        scan_mail(application.state.detector, parsed)
+                        if collection_secret is None
+                        else None
+                    )
+                    if collection_secret is not None:
+                        metadata["analysis"] = application.state.pipeline.submit(
+                            current["account_id"], parsed, collection_secret
+                        )
+                    return metadata
                 except ConnectorError as exc:
                     # One throttled message should not hide the rest of the inbox.
                     if exc.code not in {"mail_not_found", "message_too_large", "rate_limited"}:
                         raise
-                    return {
+                    failed = {
                         "id": message_id,
                         "thread_id": "",
                         "subject": "가져오지 못한 메일",
@@ -311,6 +418,16 @@ def create_app(settings: Settings | None = None, transport=None) -> FastAPI:
                         "truncated": True,
                         "attachments": [],
                     }
+                    with application.state.store.connection() as conn:
+                        conn.execute("BEGIN IMMEDIATE")
+                        application.state.store.save_metadata(
+                            current["account_id"], failed, conn=conn
+                        )
+                        if collection_secret is not None:
+                            application.state.cloud.mark(
+                                current["account_id"], message_id, conn=conn
+                            )
+                    return failed
 
         messages = await asyncio.gather(*(fetch(mid) for mid in ids))
         return {
@@ -320,25 +437,51 @@ def create_app(settings: Settings | None = None, transport=None) -> FastAPI:
         }
 
     @application.get("/api/mails")
+    @application.post("/api/mails")
     async def list_mails(
         request: Request,
         limit: int = Query(20, ge=1, le=50),
         page_token: str | None = Query(None, max_length=2048),
     ):
         secret, current = session(request, required=True)
+        if request.method == "POST":
+            csrf(request)
         limit_requests(secret, "list", 30)
-        return await load_page(current, limit, page_token)
+        collection_secret = None
+        warning = None
+        if request.method == "POST":
+            try:
+                await application.state.pipeline.refresh_model(current["account_id"])
+            except ConnectorError as exc:
+                warning = {"code": exc.code, "message": exc.message}
+            collection_secret = secret
+        page = await load_page(current, limit, page_token, collection_secret=collection_secret)
+        if warning:
+            page["analysis_warning"] = warning
+        return page
 
     @application.post("/api/sync")
     async def sync(request: Request, limit: int = Query(20, ge=1, le=50)):
         """Push the latest mails and their verdicts to Supabase. Explicit, so a GET never writes."""
         secret, current = csrf(request)
+        _, current = session(request, required=True)
         limit_requests(secret, "sync", 10)
         sink = application.state.supabase
         if sink is None:
             raise ConnectorError("supabase_not_configured", "Supabase 설정이 없습니다.", 503)
         page = await load_page(current, limit, None)
-        saved = await sink.save_page(current["email"], page["messages"])
+        async with application.state.cloud.locks[current["account_id"]]:
+            _, current = session(request, required=True)
+            with application.state.store.connection() as conn:
+                application.state.store._require_account(conn, current["account_id"])
+            analyses = {
+                mail["id"]: result
+                for mail in page["messages"]
+                if (result := application.state.pipeline.latest(current["account_id"], mail["id"]))
+            }
+            saved = await sink.save_page(
+                current["email"], page["messages"], user_id=current["user_id"], analyses=analyses
+            )
         return {"saved": saved}
 
     @application.get("/api/mails/{message_id}")
@@ -351,24 +494,50 @@ def create_app(settings: Settings | None = None, transport=None) -> FastAPI:
     async def disconnect(request: Request):
         secret, _ = csrf(request)
         _, current = session(request, required=True)
-        if current["mode"] == "google":
-            await application.state.google.revoke(current["account_id"])
-        if application.state.supabase:
-            # Before the local wipe: if this fails the user can retry with the session intact.
-            await application.state.supabase.delete_connection(current["email"])
-        application.state.store.forget_account(current["account_id"])
+        async with application.state.cloud.locks[current["account_id"]]:
+            application.state.store.start_deletion(current["account_id"])
+            application.state.pipeline.cancel_account(current["account_id"])
+            if current["mode"] == "google":
+                await application.state.google.revoke(current["account_id"])
+            if application.state.supabase:
+                # A late save must not recreate a deleted connection.
+                await application.state.supabase.delete_connection(
+                    current["email"], user_id=current["user_id"]
+                )
+            owners = {"account:" + current["account_id"], digest(secret)}
+            if current["user_id"]:
+                owners.add("user:" + current["user_id"])
+            with application.state.store.connection() as conn:
+                owners.update(
+                    row[0]
+                    for row in conn.execute(
+                        "SELECT id_hash FROM sessions WHERE account_id=?", (current["account_id"],)
+                    )
+                )
+            await application.state.experiments.forget_owners(owners)
+            application.state.store.forget_account(current["account_id"])
         response = JSONResponse({"disconnected": True})
         response.delete_cookie(COOKIE, path="/", httponly=True, samesite="lax")
         return response
 
     @application.post("/api/logout")
     async def logout(request: Request):
-        secret, _ = csrf(request)
+        secret, current = csrf(request)
+        if current and current["account_id"]:
+            application.state.pipeline.cancel_account(current["account_id"])
+        owners = {digest(secret)}
+        if current and current["user_id"]:
+            owners.add("user:" + current["user_id"])
+        for record in list(application.state.experiments.records.values()):
+            if record["owner"] in owners:
+                application.state.experiments.cancel(record)
         application.state.store.delete_session(secret)
         response = JSONResponse({"logged_out": True})
         response.delete_cookie(COOKIE, path="/", httponly=True, samesite="lax")
         return response
 
+    register_experiments(application, csrf, session)
+    register_pipeline(application, csrf, session)
     application.mount("/static", StaticFiles(directory=STATIC), name="static")
     return application
 

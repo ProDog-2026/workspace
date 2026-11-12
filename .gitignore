@@ -24,7 +24,7 @@
 
 **/*.egg-info/
 
-# Local model weights
+# Local model weights (team artifacts are shared separately).
 **/models/
 
 # Regenerable external detector datasets
