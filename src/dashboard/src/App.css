@@ -204,8 +204,6 @@ table.list td { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; 
 .list .sender, .list .reason { color: var(--ink-2); }
 /* wrapping tables */
 table.wrap td { height: auto; padding: 14px 16px; vertical-align: middle; line-height: 1.55; }
-.automatic-analysis-table { min-width: 840px; }
-.automatic-analysis-table td { overflow-wrap: anywhere; }
 tr.off td { color: var(--muted); }
 table.guide { min-width: 760px; }
 .guide td { vertical-align: top; }

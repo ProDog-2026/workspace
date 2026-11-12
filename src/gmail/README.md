@@ -1,18 +1,5 @@
 # ProDog Gmail 메일 연동 모듈
 
-Windows 팀원은 [가상화 환경 구성 지시서](../../docs/virtualization-setup-guide.md)를 사용할 수 있다.
-
-팀원이 pull받은 뒤 준비할 항목은 [팀 실행 안내](../../docs/team-setup.md),
-Gmail 없이 정상/공격 예시를 비교하는 방법은 [합성 메일 쌍 평가](docs/synthetic-evaluation.md)를 따른다.
-
-수집 후 정적 분류와 Ollama 동적 분석을 자동으로 연결하려면
-[자동 분석 실행 안내](docs/automatic-analysis.md)를 따른다. 메일별 실행 버튼은 필요 없으며
-설정에서 모델과 자동 분석 사용을 한 번 저장한다. 실제 학습 모델은 별도 준비가 필요하다.
-
-동적 분석 실험은 기존 서버에 추가되어 있다. Docker 이미지 준비, 무료 API/Ollama 설정,
-Mac·Windows 실행 방법은 [동적 분석 실행 안내](docs/dynamic-analysis.md)를 참고한다.
-대시보드의 **동적 분석** 메뉴에서 사용하며 Gmail 연결 없이 합성 입력으로 실험할 수 있다.
-
 `메일 불러오기 · Google OAuth 연동(9/24~9/30)`의 로컬 구현이다.
 Google 계정을 연결하고 받은편지함을 조회한 뒤, 메일 본문을 후속 분석기에 넘길 수 있는 형태로 추출한다.
 탐지 결과나 차단 효과를 만들어 표시하지 않는다.
@@ -86,8 +73,8 @@ uv run python scripts/configure_google.py 'C:\경로\client_secret.json'
 | 본문 추출 | Gmail RAW, 한글 charset, MIME plain/HTML, 숨김 문구·주석 보존 |
 | 후속 분석 입력 | `trust=UNTRUSTED`, `analysis_text`, 원문 본문 SHA-256, 불완전 수집 경고 |
 | 토큰 | 서버에서 암호화 저장·자동 갱신, 갱신 실패 시 재연결, 프런트엔드 미노출 |
-| 로컬 DB | 계정별 메타데이터 upsert에는 본문 없음. 자동 분석 본문은 암호화 대기 payload/실행 로그에 저장될 수 있음 |
-| 연결 해제 | Google revoke 후 해당 Gmail·본인 실험 정리와 로그/평가 삭제를 확인하고 로컬 토큰·계정·메타데이터·세션 삭제 |
+| 로컬 DB | 계정별 메타데이터 upsert. 본문·RAW·첨부 내용은 저장하지 않음 |
+| 연결 해제 | Google revoke 성공 후 로컬 토큰·계정·메일 메타데이터·세션 삭제 |
 | 표시 | 외부 이미지 요청과 HTML 실행 없이 텍스트로 표시 |
 
 원문은 최대 2 MiB, 추출 텍스트는 최대 300,000자, MIME part는 100개, 중첩은 20단계까지 처리한다.
@@ -103,14 +90,8 @@ uv run python scripts/configure_google.py 'C:\경로\client_secret.json'
 분석기는 `warnings`, `truncated`, `attachments`도 함께 받아 수집 누락과 분석 결과를 구분해야 한다.
 
 현재 모듈은 독립 실행 검증을 위해 SQLite와 로컬 세션을 사용한다.
-Supabase 설정 시 access token을 서버에서 검증하고 Gmail OAuth 연결을 해당 user_id에 귀속한다.
-POST 수집·정적/동적 결과는 durable outbox로 Supabase에 자동 저장하며 브라우저는 SELECT만 한다.
-
-인증 헤더 없이 기존 사용자 세션을 조회하면 세션·OAuth·작업을 변경하지 않고 401을 반환한다.
-로그아웃은 현재 사용자의 Gmail 작업과 합성 평가를 중지하며 다른 사용자의 작업은 유지한다.
-Gmail 재연결과 토큰 갱신이 겹쳐도 오래된 응답은 새 연결을 덮어쓰거나 무효화하지 않는다.
-설정은 `.env.example`, 흐름은 [현재 아키텍처](../../arch/architecture.md)를 따른다.
-공유 서버로 옮길 때 HTTPS·키 관리·공유 세션 배포를 별도로 구성해야 한다.
+팀의 Supabase Auth·DB 구현을 대체하는 최종 구조는 아니다.
+공유 서버로 옮길 때 앱 사용자 ID에 Gmail 연결을 묶고 RLS·HTTPS·키 관리·공유 세션을 적용해야 한다.
 개발용 서버는 루프백에만 바인딩한다.
 
 ## 검증
@@ -141,8 +122,3 @@ docs/          실제 계정 설정, 팀 통합 계약, 검증 기록
 ```
 
 프로젝트 방향에 대한 의견은 [설계 검토](docs/project-review.md)에 정리했다.
-# 로그인 없는 전용 분석 VM
-
-Mac에서 별도 Linux VM을 사용하는 실행·검증·중지 절차는 [docs/local-vm.md](docs/local-vm.md)에 있다.
-`uv run python scripts/setup_local_vm.py`가 공유 폴더 없는 VM을 준비하고, 실제 경계 검사 통과 후
-`SANDBOX_DOCKER_CONTEXT=prodog-vm`만 설정한다. 기존 백엔드는 사용자가 직접 재시작한다.

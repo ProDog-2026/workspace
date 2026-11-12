@@ -13,7 +13,6 @@ export default function Admin({ rules, setRules }) {
 
       <section className="panel">
         <div className="panel-head"><h2>탐지 룰<span className="count">총 <b>{rules.length}</b>개</span></h2></div>
-        <p id="weight-note" className="note">가중치는 0~100 사이의 숫자만 적용해요. 빈 값이나 잘못된 입력은 이전 가중치를 유지해요.</p>
         <div className="table-scroll">
           <table className="wrap rules">
             <colgroup><col className="w-sw" /><col className="w-id" /><col /></colgroup>

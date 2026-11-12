@@ -86,11 +86,6 @@ def _expand_paired_record(record: dict[str, Any]) -> list[dict[str, Any]]:
             raise ValueError(f"paired sample {group}: missing {name} object")
         expanded.append(
             {
-                **{
-                    key: record[key]
-                    for key in ("split", "source_dataset", "dataset", "source")
-                    if key in record
-                },
                 "group_id": group,
                 "subject": str(record.get("scenario", "")),
                 "body_text": str(variant.get("external_content", "")),

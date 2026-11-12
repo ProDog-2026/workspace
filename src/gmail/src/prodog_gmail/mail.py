@@ -264,21 +264,16 @@ def parse_gmail_message(message: dict) -> dict:
                 _warn(warnings, "text_payload_invalid")
                 continue
             content = _decode_text(part, payload, warnings)
-            if not content:
-                continue
-            separator = 1 if analysis and remaining else 0
-            if len(content) + separator > remaining:
-                content = content[:remaining - separator]
+            if len(content) > remaining:
+                content = content[:remaining]
                 _warn(warnings, "text_size_limit_exceeded")
                 result["truncated"] = True
-            if not content and not separator:
-                continue
-            remaining -= len(content) + separator
+            remaining -= len(content)
             (plain if kind == "text/plain" else html).append(content)
             analysis.append(content)
-        result["text_plain"] = "\n".join(plain)
-        result["text_html"] = "\n".join(html)
-        result["analysis_text"] = "\n".join(analysis)
+        result["text_plain"] = "".join(plain)
+        result["text_html"] = "".join(html)
+        result["analysis_text"] = "".join(analysis)
         if "header_truncated" in warnings or "attachment_filename_truncated" in warnings:
             result["truncated"] = True
     except _MimeLimitError as exc:

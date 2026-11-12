@@ -1,6 +1,4 @@
--- 과거 테이블 초안: 행 필드 참고용이며 실행하지 않는다.
--- 현재 Supabase는 mail_messages + analysis_results의 scans 읽기 뷰를 사용한다.
--- 기존 뷰와 충돌하므로 아래 CREATE TABLE은 실제 프로젝트에 적용하지 않는다. README.md 참조.
+-- Supabase 테이블 초안: 메일 1건 = 검사 결과 1행. 대시보드는 이 테이블만 읽는다.
 -- 쓰기는 백엔드(추출기·탐지 파이프라인)가 service_role 키로 한다.
 create table scans (
   id               bigint generated always as identity primary key,

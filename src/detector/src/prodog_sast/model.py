@@ -643,8 +643,6 @@ def load_artifact(path: str | Path) -> dict[str, Any]:
 
 def predict(artifact: dict[str, Any], texts: Sequence[str]) -> list[dict[str, Any]]:
     probabilities = artifact["pipeline"].predict_proba(list(texts))[:, 1]
-    if not np.all(np.isfinite(probabilities) & (probabilities >= 0) & (probabilities <= 1)):
-        raise ValueError("model probabilities must be finite and between 0 and 1")
     suspicious_threshold = float(
         artifact.get("suspicious_threshold", DEFAULT_SUSPICIOUS_THRESHOLD)
     )
@@ -661,9 +659,9 @@ def predict(artifact: dict[str, Any], texts: Sequence[str]) -> list[dict[str, An
 
     return [
         {
-            "prompt_injection_probability": float(probability),
-            "suspicious_threshold": suspicious_threshold,
-            "danger_threshold": danger_threshold,
+            "prompt_injection_probability": round(float(probability), 6),
+            "suspicious_threshold": round(suspicious_threshold, 6),
+            "danger_threshold": round(danger_threshold, 6),
             "verdict": verdict(float(probability)),
         }
         for probability in probabilities
