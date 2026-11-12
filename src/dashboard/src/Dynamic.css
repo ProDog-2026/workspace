@@ -26,6 +26,14 @@
 .dynamic-prompt-editor > summary, .dynamic-experiment > summary { cursor: pointer; font-weight: 600; font-size: 14px; }
 .dynamic-prompt-editor .dynamic-stack { margin-top: 20px; }
 .dynamic-experiment > summary { padding: 22px 28px; }
+.dynamic-tools > summary { cursor: pointer; padding: 22px 28px; font-size: 14px; font-weight: 600; }
+.dynamic-tools > summary .dynamic-badge { margin-left: 8px; font-weight: 400; }
+.dynamic-tool-list { list-style: none; padding: 0; margin: 16px 0 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: 12px; }
+.dynamic-tool-item { min-width: 0; padding: 16px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
+.dynamic-tool-heading { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; color: var(--ink); font-size: 14px; }
+.dynamic-tool-item code { display: block; margin-top: 8px; color: var(--ink-2); font-size: 12px; overflow-wrap: anywhere; }
+.dynamic-tool-item p { margin: 10px 0; color: var(--ink-2); font-size: 12px; line-height: 1.6; }
+.dynamic-tool-item small { color: var(--muted); overflow-wrap: anywhere; }
 .dynamic-notice { padding: 13px 17px; border: 1px solid var(--brand-line); border-radius: 12px; color: var(--ink-2); background: var(--brand-weak); line-height: 1.65; font-size: 13px; margin: 0 0 20px; }
 .dynamic-notice a { font-weight: 600; text-decoration: underline; }
 .dynamic-notice.error { border-color: var(--warn-line); background: var(--warn-soft); color: var(--danger-text); }

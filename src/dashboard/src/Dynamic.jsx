@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { dynamic, gmail } from './api'
 import { DynamicEvents, DynamicFlow, DynamicResult } from './DynamicDetails'
 import { dynamicError, dynamicLabel, isActive } from './dynamicState'
+import toolDefinitions from '../../agent-container/control-dashboard/backend/tool_definitions.json'
+import mockCatalog from '../../agent-container/control-dashboard/backend/mock_tools/catalog.json'
 import './Dynamic.css'
 
 const DEFAULT = { auto_submit: true, base_url: 'http://host.docker.internal:11434', model: '',
@@ -14,6 +16,36 @@ const DEPLOY_ERRORS = {
   connection_failed: '배포 후 서버 또는 수신 서비스에 연결하지 못했습니다. Docker 컨테이너 상태를 확인하세요.',
 }
 const CHECK_MESSAGES = { ready: '모델 연결과 도구 호출 확인 완료', limit_reached: '응답 토큰 한도 도달', tool_call_not_verified: '연결됐지만 도구 호출 미확인', tool_roundtrip_not_verified: '도구 결과 전달 뒤 최종 응답 미확인' }
+
+const TOOL_INFO = {
+  read_email: ['검사 메일 읽기', '검사 대상으로 전달된 메일을 읽습니다.', '검사 데이터'],
+  save_summary: ['요약 저장', '작업 디렉터리에 요약 파일을 저장합니다.', '제한된 실행'],
+  send_email: ['메일 전송', '전송 요청을 기록하지만 실제 메일은 보내지 않습니다.', '모의 실행'],
+  write_file: ['파일 쓰기', '작업 디렉터리의 files 폴더에 파일을 씁니다.', '제한된 실행'],
+  fetch_url: ['테스트 서버 요청', '등록된 테스트 수신 서버로만 HTTP 요청을 보냅니다.', '제한된 실행'],
+}
+
+function DynamicTools() {
+  const tools = [
+    ...toolDefinitions.map(({ function: tool }) => {
+      const [label, description, mode] = TOOL_INFO[tool.name] ?? [tool.name, tool.description, '실행 방식 확인 필요']
+      return { name: tool.name, label, description, mode, fields: tool.parameters.required ?? [] }
+    }),
+    ...mockCatalog.map((tool) => ({ ...tool, mode: '모의 실행' })),
+  ]
+  return <details className="panel dynamic-tools">
+    <summary>에이전트 도구 목록 <span className="dynamic-badge">{tools.length}개</span></summary>
+    <div className="panel-body">
+      <p className="note">현재 웹 대시보드에 포함된 도구 정의입니다. 실행 중인 검사 이미지의 버전과 다를 수 있습니다. 모의 도구는 요청만 기록하며 실제 작업을 수행하지 않습니다.</p>
+      <ul className="dynamic-tool-list">{tools.map((tool) => <li key={tool.name} className="dynamic-tool-item">
+        <div className="dynamic-tool-heading"><strong>{tool.label}</strong><span className="dynamic-badge">{tool.mode}</span></div>
+        <code>{tool.name}</code>
+        <p>{tool.mode === '모의 실행' && tool.name !== 'send_email' ? '요청을 기록하는 모의 도구입니다.' : tool.description}</p>
+        <small>입력값: {tool.fields.length ? tool.fields.join(', ') : '없음'}</small>
+      </li>)}</ul>
+    </div>
+  </details>
+}
 
 export default function Dynamic() {
   const [form, setForm] = useState(DEFAULT)
@@ -223,6 +255,7 @@ export default function Dynamic() {
       </details>
     </section>
 
+    <DynamicTools />
     <details className="panel dynamic-experiment"><summary>수동 실험 · 내 메일 선택 또는 직접 입력</summary>
       <div className="panel-body dynamic-stack">
         <div><h3>연동된 받은편지함에서 선택</h3><p className="note">1차 분류 없이 선택한 메일 한 건을 동적 검사합니다. 메일 내용과 검사 결과가 로컬 실험 서버에 기록될 수 있습니다.</p></div>
