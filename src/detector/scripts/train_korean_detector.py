@@ -256,10 +256,8 @@ def main() -> None:
     parser.add_argument("--epochs", type=int, default=3)
     parser.add_argument("--max-length", type=int, default=256)
     parser.add_argument("--seed", type=int, default=42)
-    # KoPI validation은 test와 템플릿이 같아 점수가 0/1로 쏠린다. 거기서 뽑은
-    # 임계값은 처음 보는 메일에서 공격을 놓친다(FPR 1% 기준이 0.9874로 나왔다).
-    # 기본값은 smoke 세트에서 정상 최고점과 공격 최저점 사이로 두고, 리포트에는
-    # validation 기준 수치도 같이 남긴다.
+    # 0.5/0.75는 임시 운영값이다. smoke에서 Transformer 점수 순위는 분리되지만
+    # 이 임계값으로 공격 3건을 모두 놓친다. 배포 전 별도 데이터로 임계값을 검증해야 한다.
     parser.add_argument("--suspicious", type=float, default=0.5)
     parser.add_argument("--danger", type=float, default=0.75)
     args = parser.parse_args()
