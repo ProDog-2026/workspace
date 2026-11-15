@@ -165,7 +165,7 @@ export default function Landing() {
 
   return (
     <div className="min-h-screen bg-[#f9fafb] px-4 py-6 md:px-8 md:py-10 font-sans antialiased">
-      <section className="relative w-full max-w-[1400px] mx-auto rounded-[48px] bg-white border border-slate-200/50 shadow-[0_40px_100px_-20px_rgba(0,0,0,0.03)] overflow-hidden h-[600px] flex flex-col">
+      <section className="relative w-full max-w-[1400px] mx-auto rounded-[48px] bg-white border border-slate-200/50 shadow-[0_40px_100px_-20px_rgba(0,0,0,0.03)] overflow-hidden min-h-[600px] flex flex-col">
         <div className="absolute inset-0 pointer-events-none z-0 overflow-hidden select-none" aria-hidden="true">
           <MailScene onOpen={open} disabled={checkingLogin} />
         </div>
@@ -173,11 +173,20 @@ export default function Landing() {
         <div className="relative z-20 flex-1 px-8 md:px-16 pt-12 md:pt-16 flex flex-col items-start pointer-events-none">
           <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }} className="flex flex-col items-start pointer-events-auto">
             <h1 className="m-0 font-display text-[42px] md:text-[56px] font-medium leading-[1.1] tracking-tight text-[#0a1b33] [word-break:keep-all]">
-              매일 오는 메일<br />일일이 확인하지 마세요
+              AI를 속이려는<br />메일 속 지시를 찾아요
             </h1>
             <p className="m-0 mt-5 max-w-[440px] font-sans text-[14px] md:text-[15px] leading-relaxed text-[#64748b] [word-break:keep-all]">
-              흰 글씨, HTML 주석, 외부 전송 링크까지. Gmail 메일을 AI에게 맡기기 전에 숨겨진 지시문을 먼저 찾아 드려요.
+              메일에는 AI에게 원래 할 일을 무시하거나 정보를 보내라고 시키는 문장이 숨어 있을 수 있어요. ProDog에서 의심되는 부분을 확인해 보세요.
             </p>
+            <div className="mt-6 max-w-[470px] text-sm leading-relaxed text-slate-600 [word-break:keep-all]">
+              <h2 className="m-0 text-base font-semibold text-slate-900">시작하는 방법</h2>
+              <ol className="mt-2 pl-5 list-decimal space-y-1">
+                <li>Google 계정으로 Gmail을 연결해요.</li>
+                <li>대시보드에서 최근 받은 메일을 불러와요.</li>
+                <li>메일을 선택해 검사 결과와 찾은 부분을 확인해요.</li>
+              </ol>
+              <p className="mt-2">검사 결과가 안전을 보장하지는 않아요. 첨부파일 내용은 아직 검사하지 않아요.</p>
+            </div>
             <motion.a
               href={next}
               aria-disabled={checkingLogin}
