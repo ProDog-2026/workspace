@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useState } from 'react'
-import { gmail } from './api'
+import { UNREACHABLE, gmail } from './api'
 import Admin from './Admin'
 import Dashboard from './Dashboard'
 import Landing from './Landing'
@@ -23,7 +23,8 @@ export default function App() {
   const [rules, setRules] = useState(DEFAULT_RULES)
   const [email, setEmail] = useState(undefined)
   // 상단 연결 주소: 처음과 메뉴를 옮길 때마다 다시 읽음 (설정에서 연결·해제한 결과 반영)
-  const loadEmail = () => gmail('/api/session').then((s) => setEmail(s.email)).catch(() => setEmail(null))
+  // false = 서버가 답하지 않음. 'Gmail 연결 안 됨'(null)과 구분해야 로그인 버튼을 잘못 권하지 않음
+  const loadEmail = () => gmail('/api/session').then((s) => setEmail(s.email)).catch((e) => setEmail(e.code === UNREACHABLE ? false : null))
   useEffect(() => { loadEmail() }, [])
 
   useEffect(() => {
@@ -46,8 +47,8 @@ export default function App() {
         </nav>
         <div className="top-right">
           <ThemeToggle />
-          <span className="gnb-user">{email === undefined ? '연결 확인 중' : email ?? 'Gmail 연결 안 됨'}</span>
-          {email === undefined ? null : email
+          <span className="gnb-user">{email === undefined ? '연결 확인 중' : email === false ? '서버 연결 안 됨' : email ?? 'Gmail 연결 안 됨'}</span>
+          {email === undefined || email === false ? null : email
             ? <a className="btn" href="#/settings">연동 관리</a>
             : <a className="btn" href="#/login">로그인</a>}
         </div>
@@ -58,7 +59,7 @@ export default function App() {
           : route === 'settings' ? <Settings />
           : route === 'admin' ? <Admin rules={rules} setRules={setRules} />
           : route === 'dynamic' ? <Suspense fallback={<p className="empty">동적 검사 페이지를 불러오는 중…</p>}><Dynamic /></Suspense>
-          : <Dashboard />}
+          : <Dashboard onReload={loadEmail} />}
       </main>
     </div>
   )
