@@ -89,24 +89,24 @@
 /* 다크 값: index.html 이 시스템 설정 또는 저장된 선택으로 data-theme 을 먼저 정함 */
 :root[data-theme='dark'] {
   color-scheme: dark;
-  --page: #011821;
-  --surface: #062431;
-  --surface-2: #0a2c3a;
-  --hover: #0a2c3a;
-  --code-bg: #011821;
-  --border: #143847;
-  --grid: #0f3241;
-  --field: #2a5061;
-  --ink: #e9ecf5;
-  --ink-2: #c3cad6;
-  --muted: #9aa3b2;
-  --brand: #e9ecf5;
+  --page: #1a1919;
+  --surface: #222121;
+  --surface-2: #2a2928;
+  --hover: #2a2928;
+  --code-bg: #141313;
+  --border: #333231;
+  --grid: #2c2b2a;
+  --field: #4a4847;
+  --ink: #f4f2f0;
+  --ink-2: #d3d1ce;
+  --muted: #a8a6a4;
+  --brand: #f4f2f0;
   --brand-hover: #ffffff;
-  --on-brand: #111a4a;
-  --brand-text: #e9ecf5;
-  --brand-weak: #0f3241;
-  --brand-line: #2a5061;
-  --knob: #011821;
+  --on-brand: #1a1919;
+  --brand-text: #f4f2f0;
+  --brand-weak: #2a2928;
+  --brand-line: #4a4847;
+  --knob: #1a1919;
   --danger-soft: #3b1219;
   --danger-text: #ff9592;
   --warn: #f0868a;
@@ -116,17 +116,21 @@
   --caution-text: #ffca16;
   --safe-soft: #132d21;
   --safe-text: #3dd68c;
-  --neutral-soft: #0f3241;
-  --accent: #88deeb;
-  --accent-soft: #0f3241;
+  --neutral-soft: #2a2928;
+  --accent: #8ab4ff;
+  --accent-soft: #2a2928;
   --data: #44b48b;
-  --data-soft: #0d3a33;
+  --data-soft: #24302b;
   --shadow-btn: none;
-  --specimen-line: #143847;
-  --shadow-card: 0 0 0 1px #143847;
-  --shadow-pop: 0 0 0 1px #143847, 0 24px 60px -12px rgba(0, 0, 0, 0.6);
-  --shadow-drawer: 0 0 0 1px #143847, 0 24px 80px -16px rgba(0, 0, 0, 0.6);
-  --chev: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' fill='none' stroke='%239aa3b2' stroke-width='1.5'%3E%3Cpath d='M1 1l4 4 4-4'/%3E%3C/svg%3E");
+  --specimen-line: #333231;
+  --shadow-card: 0 0 0 1px #333231;
+  --shadow-pop: 0 0 0 1px #333231, 0 24px 60px -12px rgba(0, 0, 0, 0.6);
+  --shadow-drawer: 0 0 0 1px #333231, 0 24px 80px -16px rgba(0, 0, 0, 0.6);
+  --chev: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' fill='none' stroke='%23a8a6a4' stroke-width='1.5'%3E%3Cpath d='M1 1l4 4 4-4'/%3E%3C/svg%3E");
+  /* 다크: Ramp Obsidian #1a1919 바탕의 따뜻한 회색 계열. 네이비·청록 계열은 쓰지 않음 */
+  --specimen: #141313;
+  --specimen-ink: #f4f2f0;
+  --specimen-cap: #a8a6a4;
 }
 :root[data-theme='dark'] .popup::backdrop, :root[data-theme='dark'] .drawer::backdrop { background: rgba(0, 0, 0, 0.6); }
 :root[data-theme='dark'] .gbtn { background: #131314; border-color: #8e918f; color: #e3e3e3; }
@@ -168,10 +172,11 @@ b, strong { font-weight: 700; }
   position: sticky; top: 0; display: flex; flex-direction: column; gap: var(--space-6); block-size: 100dvh; padding: var(--space-5) var(--space-3);
   background: var(--nav-bg); border-inline-end: 1px solid var(--nav-line); color: var(--nav-ink); overflow-y: auto;
 }
-:root[data-theme='dark'] .sidebar { --nav-ink: #ffffff; --nav-ash: #a8a6a4; --nav-bg: #1a1919; --nav-wash: #2a2928; --nav-line: #2e2d2c; }
+:root[data-theme='dark'] .sidebar { --nav-ink: #f4f2f0; --nav-ash: #a8a6a4; --nav-bg: #1a1919; --nav-wash: #2a2928; --nav-line: #333231; }
 .brand { display: flex; align-items: center; gap: var(--space-3); padding-inline: var(--space-2); color: var(--nav-ink); text-decoration: none; }
 .brand-mark { display: grid; place-items: center; width: 36px; height: 36px; }
 .brand-mark img { width: 100%; height: 100%; object-fit: contain; }
+:root[data-theme='dark'] .brand-mark img { filter: brightness(0) invert(0.95); } /* 남색 로고가 어두운 바탕에 묻혀 단색 밝은 로고로 */
 .sidenav { display: grid; gap: var(--space-1); }
 .sidenav a { display: flex; align-items: center; gap: var(--space-3); min-block-size: 40px; padding: 0 var(--space-3); border-radius: 6px; color: var(--nav-ink); font-size: 0.875rem; font-weight: 400; text-decoration: none; white-space: nowrap; transition: background-color 0.3s ease-out; }
 .sidenav a svg { flex: none; color: var(--nav-ash); }
