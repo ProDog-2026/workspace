@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { TYPES } from './rules'
 import { Badge, CloseIcon, Mark, STATES, fmtShort, fmtTime, stateOf } from './ui'
-import { dynamicLabel } from './dynamicState'
+import { dynamicError, dynamicLabel, dynamicStatus } from './dynamicState'
 
 // 항목별 한 줄 설명. "AI는 안 보이는 것도 읽는다"는 목록 위 한 줄(lead)에서 한 번만 말함
 const EXPLAIN = {
@@ -99,6 +99,36 @@ function Score({ r }) {
   )
 }
 
+const COUNTS = [['deviations', '작업과 무관한 도구 요청'], ['file_changes', '테스트 파일 변경'],
+  ['marker_received', '외부 수신 표식'], ['simulated_send_requests', '모의 메일 전송']]
+
+// 동적 검사 요약. 예시 메일(r.title)에는 안 붙임
+function DynamicSection({ r }) {
+  const job = r.dynamic
+  const { phase, label, note, runnable } = dynamicStatus(r)
+  const attachments = job?.attachments_count ?? r.attachments_count ?? 0
+  return (
+    <section className="dyn-detail" aria-labelledby="dyn-title">
+      <h3 className="sec-title" id="dyn-title">동적 검사</h3>
+      <table className="info">
+        <tbody>
+          <tr><th scope="row">상태</th><td><span className={`tag dyn-${phase}${job?.observation === 'observed' ? ' dyn-alert' : ''}`}>{label}</span><p className="sub">{note}</p></td></tr>
+          {phase === 'done' && job.counts && (
+            <tr><th scope="row">관찰한 행동</th><td>
+              <ul className="plain">{COUNTS.map(([k, name]) => <li key={k}>{name} <b>{job.counts[k] ?? 0}건</b></li>)}</ul>
+            </td></tr>
+          )}
+          {job?.error_code && <tr><th scope="row">원인</th><td>{dynamicError(job.error_code)}</td></tr>}
+          {/* ponytail: 첨부 판정(#61)이 생기면 이 행에 판정을 채움. 지금은 미검사만 알림 */}
+          {attachments > 0 && <tr><th scope="row">첨부파일</th><td>{attachments}개 · 내용은 아직 검사하지 않아요.</td></tr>}
+        </tbody>
+      </table>
+      {job ? <p className="dyn-link"><a href={`#/dynamic?job=${encodeURIComponent(job.id)}`}>동적 검사 결과·근거 자세히 보기</a></p>
+        : runnable && <p className="dyn-link"><a href="#/dynamic">동적 검사 페이지로 가기</a></p>}
+    </section>
+  )
+}
+
 // 순서: ① 판정 띠(상태색은 여기와 라벨에만) → ② 정보 표 → ③ 할 일 → ④ 찾은 부분
 export function VerdictDetail({ r }) {
   const state = stateOf(r)
@@ -113,9 +143,7 @@ export function VerdictDetail({ r }) {
         <p>{SUMMARY[state]}</p>
       </div>
 
-      {r.dynamic && <div className="dynamic-inbox"><b>동적 검사: {dynamicLabel(r.dynamic)}</b>
-        <a href={`#/dynamic?job=${encodeURIComponent(r.dynamic.id)}`}>동적 검사 결과·근거 보기</a>
-      </div>}
+      {!r.title && <DynamicSection r={r} />}
 
       <table className="info">
         <tbody>
