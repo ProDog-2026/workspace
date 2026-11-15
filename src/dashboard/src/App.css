@@ -194,7 +194,7 @@ b, strong { font-weight: 700; }
 .dot { flex: none; display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--ok-dot); }
 .dot.warn { background: var(--caution); }
 .dot.err { background: var(--danger); }
-.page { width: 100%; max-width: 1440px; min-width: 0; margin: 0; padding: var(--page-pad-block) var(--page-pad-inline) var(--space-12) var(--space-5); display: grid; gap: var(--section-gap); align-content: start; container: page / inline-size; }
+.page { width: 100%; min-width: 0; margin: 0; padding: var(--page-pad-block) var(--space-5) var(--space-12); /* 좌우 여백 같게 */ display: grid; gap: var(--section-gap); align-content: start; container: page / inline-size; }
 .page-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; margin: 0 0 var(--space-1); }
 .page-head h1 { display: flex; align-items: center; gap: var(--space-3); font: 600 clamp(1.75rem, 1.25rem + 2vw, 2.5rem)/1.1 var(--display); text-wrap: balance; letter-spacing: -0.02em; color: var(--ink); }
 
