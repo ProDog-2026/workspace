@@ -4,6 +4,7 @@ import copy
 import hashlib
 import os
 import secrets
+import shutil
 import time
 import uuid
 import json
@@ -164,6 +165,28 @@ class RunManager:
             if run.pending:
                 run.pending.cancel()
         return run.public()
+
+    async def purge(self, run_id):
+        """Stop and drain the writer before deleting its private artifacts."""
+        run = self.runs.get(run_id)
+        if run:
+            self.stop(run_id)
+            if run.lifecycle and not run.lifecycle.done():
+                try:
+                    await asyncio.wait_for(asyncio.shield(run.lifecycle), timeout=15)
+                except TimeoutError:
+                    raise RunError("cleanup_pending", 409) from None
+            if run.pending and not run.pending.done():
+                raise RunError("cleanup_pending", 409)
+        if self.store:
+            directory = self.store.directory(run_id)
+            if directory.is_symlink() or directory.resolve().parent != self.store.root.resolve():
+                raise RunError("invalid_run_id", 422)
+            if directory.exists():
+                shutil.rmtree(directory)
+        self.runs.pop(run_id, None)
+        self.settings.pop(run_id, None)
+        return {"deleted": True}
 
     async def infer(self, run_id, token, messages, tools):
         run = self.get(run_id)

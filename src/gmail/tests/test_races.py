@@ -8,6 +8,7 @@ from urllib.parse import parse_qs, urlsplit
 
 import httpx
 from cryptography.fernet import Fernet
+from oidc_provider import id_token, jwks
 
 from prodog_gmail.app import COOKIE, create_app
 from prodog_gmail.config import GMAIL_SCOPE, Settings
@@ -83,6 +84,9 @@ async def disconnect_during_request(tmp_path, paused_request):
     async with running_client(tmp_path, provider) as (app, client):
         store = app.state.store
         account = store.account("race@example.invalid", "google")
+        with store.connection() as conn:
+            conn.execute("UPDATE accounts SET google_sub='race', user_id='google:race' WHERE id=?",
+                         (account,))
         store.save_tokens(
             account,
             {
@@ -148,7 +152,13 @@ def test_logout_cancels_callback_already_exchanging_code(tmp_path):
                 assert parse_qs(request.content.decode())["grant_type"] == ["authorization_code"]
                 started.set()
                 await release.wait()
-                return token_response()
+                result = token_response().json()
+                body = parse_qs(request.content.decode())
+                result["id_token"] = id_token(body["code_verifier"][0], result["access_token"],
+                                              "race@example.invalid", "test-client")
+                return httpx.Response(200, json=result)
+            if request.url.path == "/oauth2/v3/certs":
+                return httpx.Response(200, json=jwks())
             if request.url.path.endswith("/profile"):
                 return httpx.Response(200, json={"emailAddress": "race@example.invalid"})
             raise AssertionError(f"Unexpected provider endpoint: {request.url.path}")

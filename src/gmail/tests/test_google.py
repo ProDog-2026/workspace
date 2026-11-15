@@ -65,7 +65,8 @@ def test_authorization_url_requests_only_readonly_offline_scope_and_pkce(google_
             parts = urlsplit(result)
             query = parse_qs(parts.query)
             assert result.startswith(AUTHORIZE_URL + "?")
-            assert query["scope"] == [GMAIL_SCOPE]
+            assert set(query["scope"][0].split()) == {"openid", "email", GMAIL_SCOPE}
+            assert query["nonce"]
             assert query["access_type"] == ["offline"]
             assert query["response_type"] == ["code"]
             assert query["state"] == ["synthetic-state"]

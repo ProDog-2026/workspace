@@ -37,6 +37,7 @@ def create_app(settings: Settings | None = None, transport=None, dynamic_transpo
         application.state.settings = config
         application.state.store = Store(config)
         application.state.rates = defaultdict(deque)
+        application.state.owner_locks = defaultdict(asyncio.Lock)
         application.state.detector = load_detector(config.detector_model_path)
         async with httpx.AsyncClient(
             timeout=httpx.Timeout(20, connect=10),
@@ -74,6 +75,9 @@ def create_app(settings: Settings | None = None, transport=None, dynamic_transpo
             not current
             or not current["account_id"]
             or current["mode"] != application.state.settings.app_mode
+            or (current["mode"] == "google" and not current["user_id"])
+            or (current.get("status") == "disconnecting"
+                and request.url.path != "/api/disconnect")
         ):
             raise ConnectorError("authentication_required", "먼저 메일 계정을 연결해 주세요.", 401)
         return secret, current
@@ -113,6 +117,8 @@ def create_app(settings: Settings | None = None, transport=None, dynamic_transpo
             current
             and current["account_id"]
             and current["mode"] == config.app_mode
+            and current["status"] == "active"
+            and (current["mode"] == "demo" or current["user_id"])
             and (
                 current["mode"] == "demo"
                 or application.state.store.has_tokens(current["account_id"])
@@ -125,6 +131,7 @@ def create_app(settings: Settings | None = None, transport=None, dynamic_transpo
         )
         return {
             "authenticated": authenticated,
+            "cleanup_pending": bool(current and current.get("status") == "disconnecting"),
             "needs_reconnect": bool(bundle and bundle.get("needs_reconnect")),
             "email": current["email"] if authenticated else None,
             "csrf_token": application.state.store.csrf(secret),
@@ -154,7 +161,15 @@ def create_app(settings: Settings | None = None, transport=None, dynamic_transpo
                 {"error": {"code": "invalid_host", "message": "설정된 로컬 주소로 접속하세요."}},
                 status_code=400,
             )
-        response = await call_next(request)
+        _, current = session(request)
+        if (request.method not in {"GET", "HEAD", "OPTIONS"}
+                and request.url.path.startswith("/api/dynamic/")
+                and request.url.path not in {"/api/dynamic/check", "/api/dynamic/deployment"}
+                and current and current["account_id"]):
+            async with application.state.owner_locks[current["account_id"]]:
+                response = await call_next(request)
+        else:
+            response = await call_next(request)
         response.headers.update(
             {
                 "Cache-Control": "no-store",
@@ -252,12 +267,24 @@ def create_app(settings: Settings | None = None, transport=None, dynamic_transpo
                     "invalid_google_response", "연결 응답이 올바르지 않습니다.", 502
                 )
             profile = await application.state.google.profile(access)
-            new = store.complete_oauth(
-                secret,
-                profile["emailAddress"],
-                oauth_response,
-                application.state.google.token_bundle,
-            )
+            subject = await application.state.google.identity(
+                oauth_response, verifier, profile["emailAddress"])
+            sink = application.state.supabase
+            user_id = await sink.authenticate(
+                oauth_response["id_token"], access, verifier, subject
+            ) if sink else "google:" + subject
+            with store.connection() as conn:
+                existing = conn.execute("SELECT id FROM accounts WHERE google_sub=?",
+                                        (subject,)).fetchone()
+            lock_key = existing["id"] if existing else "google-sub:" + subject
+            async with application.state.owner_locks[lock_key]:
+                new = store.complete_oauth(
+                    secret,
+                    profile["emailAddress"],
+                    oauth_response,
+                    application.state.google.token_bundle,
+                    google_sub=subject, user_id=user_id,
+                )
             response = RedirectResponse(config.dashboard_url + "/?connected=1", status_code=303)
             set_cookie(response, new)
             return response
@@ -355,13 +382,20 @@ def create_app(settings: Settings | None = None, transport=None, dynamic_transpo
     @application.post("/api/sync")
     async def sync(request: Request, limit: int = Query(20, ge=1, le=50)):
         """Push the latest mails and their verdicts to Supabase. Explicit, so a GET never writes."""
-        secret, current = csrf(request)
+        secret, _ = csrf(request)
+        _, current = session(request, required=True)
         limit_requests(secret, "sync", 10)
         sink = application.state.supabase
         if sink is None:
             raise ConnectorError("supabase_not_configured", "Supabase 설정이 없습니다.", 503)
-        page = await load_page(current, limit, None)
-        saved = await sink.save_page(current["email"], page["messages"])
+        async with application.state.owner_locks[current["account_id"]]:
+            _, current = session(request, required=True)
+            if current["status"] != "active":
+                raise ConnectorError("disconnect_pending", "연결 해제를 먼저 완료하세요.", 409)
+            page = await load_page(current, limit, None)
+            owner = (current["user_id"] if current["mode"] == "google"
+                     else application.state.settings.supabase_user_id)
+            saved = await sink.save_page(owner, current["email"], page["messages"])
         return {"saved": saved}
 
     @application.get("/api/mails/{message_id}")
@@ -374,13 +408,21 @@ def create_app(settings: Settings | None = None, transport=None, dynamic_transpo
     async def disconnect(request: Request):
         secret, _ = csrf(request)
         _, current = session(request, required=True)
-        if current["mode"] == "google":
-            await application.state.google.revoke(current["account_id"])
-        if application.state.supabase:
-            # Before the local wipe: if this fails the user can retry with the session intact.
-            await application.state.supabase.delete_connection(current["email"])
-        await cancel_dynamic(current["account_id"])
-        application.state.store.forget_account(current["account_id"])
+        async with application.state.owner_locks[current["account_id"]]:
+            _, current = session(request, required=True)
+            if current["mode"] == "google":
+                with application.state.store.connection() as conn:
+                    conn.execute("UPDATE accounts SET status='disconnecting' "
+                                 "WHERE id=? AND user_id=?",
+                                 (current["account_id"], current["user_id"]))
+                await application.state.google.revoke(current["account_id"])
+            if application.state.supabase:
+                owner = (current["user_id"] if current["mode"] == "google"
+                         else application.state.settings.supabase_user_id)
+                await application.state.supabase.delete_connection(
+                    owner, current["email"])
+            await cancel_dynamic(current["account_id"])
+            application.state.store.forget_account(current["account_id"])
         response = JSONResponse({"disconnected": True})
         response.delete_cookie(COOKIE, path="/", httponly=True, samesite="lax")
         return response

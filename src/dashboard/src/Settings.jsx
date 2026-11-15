@@ -37,6 +37,10 @@ export default function Settings() {
     await post('/api/disconnect')
     await refresh()
   })
+  const switchAccount = () => run(async () => {
+    await post('/api/logout')
+    location.hash = '#/login'
+  })
 
   const connected = session?.authenticated && !session.needs_reconnect
 
@@ -53,11 +57,18 @@ export default function Settings() {
               <td><div className="cell">
                 {!session ? (
                   <span className="muted">{busy ? '연결 상태 확인 중…' : '연결 상태를 알 수 없어요.'}</span>
+                ) : session.cleanup_pending ? (
+                  <>
+                    <span className="muted">연결 해제가 끝나지 않았어요. 다시 시도하면 남은 데이터를 정리해요.</span>
+                    <button type="button" className="btn primary" disabled={busy} onClick={disconnect}>연결 해제 다시 시도</button>
+                    <button type="button" className="btn" disabled={busy} onClick={switchAccount}>다른 계정으로 로그인</button>
+                  </>
                 ) : connected ? (
                   <>
                     <span>{session.email}</span>
                     <span className="tag ro">읽기 전용</span>
                     <button type="button" className="btn" disabled={busy} onClick={disconnect}>연동 해제</button>
+                    {session.mode === 'google' && <button type="button" className="btn" disabled={busy} onClick={switchAccount}>다른 계정으로 로그인</button>}
                   </>
                 ) : (
                   <>

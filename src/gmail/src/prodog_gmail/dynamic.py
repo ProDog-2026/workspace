@@ -139,6 +139,15 @@ class DynamicService:
             raise ConnectorError(
                 "prompt_not_found", "선택한 프롬프트가 없습니다. 설정을 다시 저장하세요.", 409
             )
+        with self.db.store.connection() as db:
+            account = db.execute("SELECT mode FROM accounts WHERE id=?", (owner,)).fetchone()
+            if account and account["mode"] == "google" and not prompt.get("builtin"):
+                owned = db.execute(
+                    "SELECT 1 FROM dynamic_prompt_owners WHERE id=? AND owner=?",
+                    (prompt["id"], owner),
+                ).fetchone()
+                if not owned:
+                    raise ConnectorError("prompt_read_only", "내 프롬프트를 선택하세요.", 403)
         return options, fingerprint(prompt["text"])
 
     async def enqueue(

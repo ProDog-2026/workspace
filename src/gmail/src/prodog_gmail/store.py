@@ -52,6 +52,20 @@ class Store:
                     updated_at REAL NOT NULL, PRIMARY KEY(account_id, gmail_message_id)
                 );
             """)
+            columns = {r["name"] for r in conn.execute("PRAGMA table_info(accounts)")}
+            for name in ("google_sub", "user_id"):
+                if name not in columns:
+                    conn.execute(f"ALTER TABLE accounts ADD COLUMN {name} TEXT")
+            if "status" not in columns:
+                conn.execute("ALTER TABLE accounts ADD COLUMN "
+                             "status TEXT NOT NULL DEFAULT 'active'")
+            # Preserve old data without granting a newly verified identity access to it.
+            conn.execute("DELETE FROM sessions WHERE account_id IN "
+                         "(SELECT id FROM accounts WHERE mode='google' AND google_sub IS NULL)")
+            conn.execute("UPDATE accounts SET mode='legacy-google' "
+                         "WHERE mode='google' AND google_sub IS NULL")
+            conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS google_subject ON accounts(google_sub)")
+            conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS app_owner ON accounts(user_id)")
 
     @contextmanager
     def connection(self):
@@ -83,7 +97,7 @@ class Store:
             return None
         with self.connection() as conn:
             row = conn.execute(
-                "SELECT s.*, a.email, a.mode FROM sessions s "
+                "SELECT s.*, a.email, a.mode, a.google_sub, a.user_id, a.status FROM sessions s "
                 "LEFT JOIN accounts a ON a.id=s.account_id "
                 "WHERE s.id_hash=? AND s.expires_at > ?",
                 (digest(secret), time.time()),
@@ -129,7 +143,7 @@ class Store:
     def account(self, email: str, mode: str) -> str:
         with self.connection() as conn:
             conn.execute(
-                "INSERT OR IGNORE INTO accounts VALUES (?, ?, ?)",
+                "INSERT OR IGNORE INTO accounts(id,email,mode) VALUES (?, ?, ?)",
                 (str(uuid.uuid4()), email.casefold(), mode),
             )
             return conn.execute(
@@ -204,7 +218,8 @@ class Store:
                 "authentication_required", "연결이 해제되었습니다. 다시 연결해 주세요.", 401
             )
 
-    def complete_oauth(self, secret: str, email: str, response: dict, token_builder) -> str:
+    def complete_oauth(self, secret: str, email: str, response: dict, token_builder,
+                       *, google_sub: str, user_id: str) -> str:
         """Commit login only if the initiating session still exists after network I/O.
 
         Logout/disconnect and this transaction serialize, preventing a late callback
@@ -213,26 +228,43 @@ class Store:
         with self.connection() as conn:
             conn.execute("BEGIN IMMEDIATE")
             current = conn.execute(
-                "SELECT 1 FROM sessions WHERE id_hash=? AND expires_at>?",
+                "SELECT s.account_id,a.google_sub FROM sessions s LEFT JOIN accounts a "
+                "ON a.id=s.account_id WHERE s.id_hash=? AND s.expires_at>?",
                 (digest(secret), time.time()),
             ).fetchone()
             if not current:
                 raise ConnectorError("invalid_state", "연결 요청이 취소되었거나 만료되었습니다.")
+            if current["account_id"] and current["google_sub"] != google_sub:
+                raise ConnectorError(
+                    "identity_conflict", "다른 계정은 로그아웃 후 연결하세요.", 409
+                )
             row = conn.execute(
-                "SELECT id FROM accounts WHERE email=? AND mode='google'", (email.casefold(),)
+                "SELECT * FROM accounts WHERE google_sub=?", (google_sub,)
             ).fetchone()
+            if row and (row["user_id"] != user_id or row["email"] != email.casefold()):
+                raise ConnectorError("identity_conflict", "기존 연결을 먼저 해제해 주세요.", 409)
+            conflict = conn.execute(
+                "SELECT id FROM accounts WHERE mode='google' AND "
+                "(email=? OR user_id=?) AND google_sub!=?",
+                (email.casefold(), user_id, google_sub),
+            ).fetchone()
+            if conflict:
+                raise ConnectorError("identity_conflict", "연결 소유자를 확인하지 못했습니다.", 409)
             account_id = row["id"] if row else str(uuid.uuid4())
             saved = conn.execute(
                 "SELECT encrypted FROM tokens WHERE account_id=?", (account_id,)
             ).fetchone()
-            previous = self._decrypt_tokens(saved["encrypted"], account_id) if saved else None
+            previous = (self._decrypt_tokens(saved["encrypted"], account_id)
+                        if saved and row["status"] == "active" else None)
             bundle = token_builder(response, previous)
             encrypted = self.cipher.encrypt(
                 json.dumps({"account_id": account_id, "bundle": bundle}).encode()
             ).decode()
             if not row:
                 conn.execute(
-                    "INSERT INTO accounts VALUES (?, ?, 'google')", (account_id, email.casefold())
+                    "INSERT INTO accounts(id,email,mode,google_sub,user_id) "
+                    "VALUES (?, ?, 'google', ?, ?)",
+                    (account_id, email.casefold(), google_sub, user_id)
                 )
             conn.execute(
                 "INSERT INTO tokens VALUES (?, ?) ON CONFLICT(account_id) "

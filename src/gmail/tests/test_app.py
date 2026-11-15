@@ -9,6 +9,7 @@ import httpx
 import pytest
 from cryptography.fernet import Fernet
 from fastapi.testclient import TestClient
+from oidc_provider import id_token, jwks
 
 from prodog_gmail.app import COOKIE, create_app
 from prodog_gmail.config import GMAIL_SCOPE, Settings
@@ -69,6 +70,8 @@ class FakeGoogle:
         self.calls.append(request)
         body = parse_qs(request.content.decode())
         path = request.url.path
+        if path == "/oauth2/v3/certs":
+            return httpx.Response(200, json=jwks())
         if path == "/token":
             if body.get("grant_type") == ["refresh_token"]:
                 self.refresh_calls += 1
@@ -78,6 +81,8 @@ class FakeGoogle:
                 "expires_in": 3600,
                 "scope": self.scope,
             }
+            data["id_token"] = id_token(body["code_verifier"][0], data["access_token"],
+                                        body["code"][0] + "@example.invalid")
             if not self.omit_refresh:
                 data["refresh_token"] = "refresh-" + body["code"][0]
             return httpx.Response(200, json=data)
@@ -198,7 +203,7 @@ def test_google_flow_pkce_encrypts_tokens_and_rotates_session(google_client, set
     client, fake = google_client
     params = oauth_start(client)
     old = client.cookies.get(COOKIE)
-    assert params["scope"] == [GMAIL_SCOPE]
+    assert set(params["scope"][0].split()) == {"openid", "email", GMAIL_SCOPE}
     assert params["access_type"] == ["offline"]
     assert params["redirect_uri"] == [BASE + "/oauth/google/callback"]
     assert params["code_challenge_method"] == ["S256"]

@@ -9,6 +9,7 @@ import httpx
 
 from .config import GMAIL_SCOPE, Settings
 from .errors import ConnectorError
+from .identity import JWKS_URL, nonce_for, verify_identity
 from .store import Store
 
 AUTHORIZE_URL = "https://accounts.google.com/o/oauth2/v2/auth"
@@ -32,7 +33,8 @@ class GoogleClient:
                     "client_id": self.settings.google_client_id,
                     "redirect_uri": self.settings.redirect_uri,
                     "response_type": "code",
-                    "scope": GMAIL_SCOPE,
+                    "scope": "openid email " + GMAIL_SCOPE,
+                    "nonce": nonce_for(verifier),
                     "access_type": "offline",
                     "prompt": "consent select_account",
                     "state": state,
@@ -184,6 +186,14 @@ class GoogleClient:
                 "invalid_google_response", "메일 계정 정보를 확인하지 못했습니다.", 502
             )
         return result
+
+    async def identity(self, response: dict, verifier: str, email: str) -> str:
+        jwks = await self._json("GET", JWKS_URL, max_bytes=65536)
+        return verify_identity(
+            response.get("id_token"), jwks,
+            client_id=self.settings.google_client_id, nonce=nonce_for(verifier),
+            access_token=response["access_token"], email=email,
+        )
 
     async def access_token(self, account_id: str, rejected: str | None = None) -> str:
         lock = self._locks.setdefault(account_id, asyncio.Lock())
