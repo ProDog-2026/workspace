@@ -164,7 +164,7 @@ b, strong { font-weight: 700; }
 /* 왼쪽 사이드바: Ramp 내비게이션 규칙(흰 바탕, hairline, 굵기 400, 6px, 노랑은 주 버튼 하나)을 세로로 */
 .app { display: grid; grid-template-columns: var(--side-w) minmax(0, 1fr); min-block-size: 100dvh; }
 .sidebar {
-  --nav-ink: #0c0a08; --nav-ash: #6d6c6b; --nav-bg: #ffffff; --nav-wash: #f4f2f0; --nav-line: #e5e7eb; --nav-signal: #e4f222;
+  --nav-ink: #0c0a08; --nav-ash: #6d6c6b; --nav-bg: #ffffff; --nav-wash: #f4f2f0; --nav-line: #e5e7eb; --nav-signal: #0058f0; /* 로고 파랑 */
   position: sticky; top: 0; display: flex; flex-direction: column; gap: var(--space-6); block-size: 100dvh; padding: var(--space-5) var(--space-3);
   background: var(--nav-bg); border-inline-end: 1px solid var(--nav-line); color: var(--nav-ink); overflow-y: auto;
 }
@@ -176,20 +176,20 @@ b, strong { font-weight: 700; }
 .sidenav a { display: flex; align-items: center; gap: var(--space-3); min-block-size: 40px; padding: 0 var(--space-3); border-radius: 6px; color: var(--nav-ink); font-size: 0.875rem; font-weight: 400; text-decoration: none; white-space: nowrap; transition: background-color 0.3s ease-out; }
 .sidenav a svg { flex: none; color: var(--nav-ash); }
 .sidenav a:hover { background: var(--nav-wash); }
-.sidenav a[aria-current='page'] { background: var(--nav-wash); box-shadow: inset 2px 0 0 var(--nav-ink); }
+.sidenav a[aria-current='page'] { background: var(--nav-wash); }
 .sidenav a[aria-current='page'] svg { color: var(--nav-ink); }
 .side-foot { display: grid; gap: var(--space-3); margin-block-start: auto; padding: var(--space-4) var(--space-2) 0; border-block-start: 1px solid var(--nav-line); }
 .side-user { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.8125rem; color: var(--nav-ash); }
 .side-actions { display: flex; gap: var(--space-2); }
 .side-actions .btn { min-block-size: 36px; padding: 0 var(--space-3); border-radius: 6px; border-color: var(--nav-ink); background: transparent; color: var(--nav-ink); font-weight: 400; box-shadow: none; }
 .side-actions .btn:hover { background: var(--nav-wash); }
-.side-actions .nav-cta { flex: 1; border-color: var(--nav-signal); background: var(--nav-signal); color: #0c0a08; }
-.side-actions .nav-cta:hover { background: #d6e41a; border-color: #d6e41a; }
+.side-actions .nav-cta { flex: 1; border-color: var(--nav-signal); background: var(--nav-signal); color: #ffffff; }
+.side-actions .nav-cta:hover { background: #0048c8; border-color: #0048c8; }
 .sync { display: flex; align-items: center; gap: var(--space-2); }
 .dot { flex: none; display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--ok-dot); }
 .dot.warn { background: var(--caution); }
 .dot.err { background: var(--danger); }
-.page { width: 100%; max-width: 1200px; min-width: 0; margin: 0 auto; padding: var(--page-pad-block) var(--page-pad-inline) var(--space-12); display: grid; gap: var(--section-gap); align-content: start; container: page / inline-size; }
+.page { width: 100%; max-width: 1440px; min-width: 0; margin: 0; padding: var(--page-pad-block) var(--page-pad-inline) var(--space-12) var(--space-5); display: grid; gap: var(--section-gap); align-content: start; container: page / inline-size; }
 .page-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; margin: 0 0 var(--space-1); }
 .page-head h1 { display: flex; align-items: center; gap: var(--space-3); font: 600 clamp(1.75rem, 1.25rem + 2vw, 2.5rem)/1.1 var(--display); text-wrap: balance; letter-spacing: -0.02em; color: var(--ink); }
 
@@ -461,7 +461,6 @@ textarea::placeholder { color: var(--muted); }
   .sidebar { position: static; flex-direction: row; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); block-size: auto; padding: var(--space-3) var(--space-4); border-inline-end: 0; border-block-end: 1px solid var(--nav-line); }
   .sidenav { order: 3; display: flex; inline-size: 100%; overflow-x: auto; scrollbar-width: none; }
   .sidenav a { flex: none; }
-  .sidenav a[aria-current='page'] { box-shadow: inset 0 -2px 0 var(--nav-ink); }
   .side-foot { display: flex; align-items: center; margin: 0 0 0 auto; padding: 0; border: 0; }
   .side-user { display: none; }
 }
