@@ -178,15 +178,6 @@ export default function Landing() {
             <p className="m-0 mt-5 max-w-[440px] font-sans text-[14px] md:text-[15px] leading-relaxed text-[#64748b] [word-break:keep-all]">
               메일에는 AI에게 원래 할 일을 무시하거나 정보를 보내라고 시키는 문장이 숨어 있을 수 있어요. ProDog에서 의심되는 부분을 확인해 보세요.
             </p>
-            <div className="mt-6 max-w-[470px] text-sm leading-relaxed text-slate-600 [word-break:keep-all]">
-              <h2 className="m-0 text-base font-semibold text-slate-900">시작하는 방법</h2>
-              <ol className="mt-2 pl-5 list-decimal space-y-1">
-                <li>Google 계정으로 Gmail을 연결해요.</li>
-                <li>대시보드에서 최근 받은 메일을 불러와요.</li>
-                <li>메일을 선택해 검사 결과와 찾은 부분을 확인해요.</li>
-              </ol>
-              <p className="mt-2">검사 결과가 안전을 보장하지는 않아요. 첨부파일 내용은 아직 검사하지 않아요.</p>
-            </div>
             <motion.a
               href={next}
               aria-disabled={checkingLogin}
@@ -196,6 +187,7 @@ export default function Landing() {
             >
               {checkingLogin ? '로그인 확인 중…' : '시작하기'}
             </motion.a>
+            <a href="#/guide" className="mt-4 text-sm font-semibold text-slate-600 underline underline-offset-4">처음이신가요? 사용법 보기</a>
           </motion.div>
         </div>
 
