@@ -1,0 +1,19 @@
+{
+  "source": "docs\\dataset\\KoPI-Bench_이메일_공격위치.csv",
+  "input_rows": 2806,
+  "cleaned_rows": 2773,
+  "exact_duplicates_removed": 33,
+  "input_labels": {
+    "인젝션": 1572,
+    "정상": 1234
+  },
+  "input_selection": {
+    "메일 본문 추정": 1319,
+    "메일 형식": 1487
+  },
+  "user_question_markers": {
+    "q": 2675,
+    "질문": 131
+  },
+  "status": "candidates_only_labels_and_email_fields_need_review"
+}

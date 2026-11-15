@@ -635,9 +635,14 @@ def load_artifact(path: str | Path) -> dict[str, Any]:
         artifact.get("suspicious_threshold", DEFAULT_SUSPICIOUS_THRESHOLD)
     )
     artifact["trained_suspicious_threshold"] = trained_threshold
-    artifact["suspicious_threshold"] = min(
-        trained_threshold, MAX_OPERATIONAL_SUSPICIOUS_THRESHOLD
+    # 0.05 게이트는 영어 모델을 Quadrat-IPI에서 고른 값이다. 한국어 모델은 점수
+    # 분포가 달라 같은 상한을 쓰면 정상 메일이 전부 suspicious로 올라간다.
+    cap = float(
+        artifact.get(
+            "max_operational_suspicious_threshold", MAX_OPERATIONAL_SUSPICIOUS_THRESHOLD
+        )
     )
+    artifact["suspicious_threshold"] = min(trained_threshold, cap)
     return artifact
 
 

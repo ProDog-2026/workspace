@@ -1,0 +1,151 @@
+{
+  "split_sizes": {
+    "train": {
+      "samples": 1895,
+      "positives": 1080
+    },
+    "validation": {
+      "samples": 407,
+      "positives": 233
+    },
+    "test": {
+      "samples": 406,
+      "positives": 239
+    },
+    "smoke": {
+      "samples": 11,
+      "positives": 3
+    }
+  },
+  "validation": {
+    "fpr_5pct": {
+      "samples": 407,
+      "positives": 233,
+      "threshold": 0.003867,
+      "true_positive": 233,
+      "false_positive": 8,
+      "false_negative": 0,
+      "precision": 0.9668,
+      "recall": 1.0,
+      "false_positive_rate": 0.046,
+      "roc_auc": 1.0
+    },
+    "fpr_1pct": {
+      "samples": 407,
+      "positives": 233,
+      "threshold": 0.013769,
+      "true_positive": 233,
+      "false_positive": 1,
+      "false_negative": 0,
+      "precision": 0.9957,
+      "recall": 1.0,
+      "false_positive_rate": 0.0057,
+      "roc_auc": 1.0
+    },
+    "half": {
+      "samples": 407,
+      "positives": 233,
+      "threshold": 0.5,
+      "true_positive": 232,
+      "false_positive": 0,
+      "false_negative": 1,
+      "precision": 1.0,
+      "recall": 0.9957,
+      "false_positive_rate": 0.0,
+      "roc_auc": 1.0
+    }
+  },
+  "test": {
+    "fpr_5pct": {
+      "samples": 406,
+      "positives": 239,
+      "threshold": 0.003867,
+      "true_positive": 239,
+      "false_positive": 3,
+      "false_negative": 0,
+      "precision": 0.9876,
+      "recall": 1.0,
+      "false_positive_rate": 0.018,
+      "roc_auc": 1.0
+    },
+    "fpr_1pct": {
+      "samples": 406,
+      "positives": 239,
+      "threshold": 0.013769,
+      "true_positive": 239,
+      "false_positive": 2,
+      "false_negative": 0,
+      "precision": 0.9917,
+      "recall": 1.0,
+      "false_positive_rate": 0.012,
+      "roc_auc": 1.0
+    },
+    "half": {
+      "samples": 406,
+      "positives": 239,
+      "threshold": 0.5,
+      "true_positive": 239,
+      "false_positive": 0,
+      "false_negative": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "false_positive_rate": 0.0,
+      "roc_auc": 1.0
+    }
+  },
+  "smoke_out_of_domain": {
+    "scores": {
+      "benign-1": 0.001,
+      "benign-2": 0.001,
+      "benign-3": 0.001,
+      "benign-4": 0.002,
+      "benign-5": 0.002,
+      "benign-6": 0.001,
+      "benign-7": 0.001,
+      "benign-8": 0.01,
+      "attack-1": 0.12,
+      "attack-2": 0.067,
+      "attack-3": 0.039
+    },
+    "fpr_5pct": {
+      "samples": 11,
+      "positives": 3,
+      "threshold": 0.003867,
+      "true_positive": 3,
+      "false_positive": 1,
+      "false_negative": 0,
+      "precision": 0.75,
+      "recall": 1.0,
+      "false_positive_rate": 0.125,
+      "roc_auc": 1.0
+    },
+    "fpr_1pct": {
+      "samples": 11,
+      "positives": 3,
+      "threshold": 0.013769,
+      "true_positive": 3,
+      "false_positive": 0,
+      "false_negative": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "false_positive_rate": 0.0,
+      "roc_auc": 1.0
+    },
+    "half": {
+      "samples": 11,
+      "positives": 3,
+      "threshold": 0.5,
+      "true_positive": 0,
+      "false_positive": 0,
+      "false_negative": 3,
+      "precision": 0.0,
+      "recall": 0.0,
+      "false_positive_rate": 0.0,
+      "roc_auc": 1.0
+    }
+  },
+  "artifact": "src/detector/models/korean-transformer",
+  "model": "transformer",
+  "rows_used": 2708,
+  "conflicts_excluded": true
+}
