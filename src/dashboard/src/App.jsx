@@ -48,8 +48,8 @@ export default function App() {
           <ThemeToggle />
           <span className="gnb-user">{email === undefined ? '연결 확인 중' : email ?? 'Gmail 연결 안 됨'}</span>
           {email === undefined ? null : email
-            ? <a className="btn" href="#/settings">연동 관리</a>
-            : <a className="btn" href="#/login">로그인</a>}
+            ? <a className="btn nav-cta" href="#/settings">연동 관리</a>
+            : <a className="btn nav-cta" href="#/login">로그인</a>}
         </div>
       </header>
       <main className="page">
