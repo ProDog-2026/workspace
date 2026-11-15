@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { scoreReason } from './api'
 import { TYPES } from './rules'
 import { Badge, CloseIcon, Mark, STATES, fmtShort, fmtTime, stateOf } from './ui'
 import { dynamicLabel } from './dynamicState'
@@ -131,7 +132,7 @@ export function VerdictDetail({ r }) {
           )}
           {(state === 'failed' || r.status === 'failed') && <tr><th scope="row">원인</th><td>{r.status_detail ?? '판정 결과가 없어요.'}</td></tr>}
           {[r.final_score, r.static_score, r.llm_score].some((score) => score != null) && (
-            <tr><th scope="row">탐지 모델 출력</th><td><Score r={r} /></td></tr>
+            <tr><th scope="row">탐지 모델 출력</th><td><Score r={r} />{scoreReason(r) && <p className="sub">{scoreReason(r)}</p>}</td></tr>
           )}
         </tbody>
       </table>

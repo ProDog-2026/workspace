@@ -28,4 +28,9 @@ def scan_mail(artifact, mail: Mapping[str, Any]) -> dict[str, Any] | None:
         "probability": probability,
         # Display only; verdict is already fixed by the detector's own thresholds.
         "static_score": round(probability * 100),
+        # Shown next to the score so the user can see why 8% is "suspicious".
+        "thresholds": {
+            "suspicious": round(result["suspicious_threshold"] * 100, 1),
+            "danger": round(result["danger_threshold"] * 100, 1),
+        },
     }
