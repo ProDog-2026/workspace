@@ -1,5 +1,5 @@
 @layer theme, base, utilities; /* 레이어 순서 고정: CSS 로드 순서와 상관없이 Tailwind 유틸리티가 base 보다 이김 */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 /* preflight(초기화)는 빼고 가져옴: 넣으면 기존 콘솔 화면 스타일까지 바뀜 */
 @import 'tailwindcss/theme.css' layer(theme);
 @import 'tailwindcss/utilities.css' layer(utilities);
@@ -7,7 +7,7 @@
 
 @theme {
   --font-sans: 'Inter', 'Pretendard Variable', Pretendard, ui-sans-serif, system-ui, sans-serif;
-  --font-display: 'Outfit', 'Pretendard Variable', Pretendard, ui-sans-serif, system-ui, sans-serif;
+  --font-display: 'Inter', 'Pretendard Variable', Pretendard, ui-sans-serif, system-ui, sans-serif;
 }
 
 @keyframes marquee {
@@ -30,7 +30,7 @@
 button.tile { padding: 0; font: inherit; }
 .tile.hot { pointer-events: auto; cursor: pointer; transition: transform 0.35s cubic-bezier(0.22, 1, 0.36, 1); }
 .tile.hot:hover, .tile.hot:focus-visible { transform: translateZ(calc(48 * var(--u))); }
-.tile.hot:focus-visible { outline: 3px solid #0a152d; outline-offset: 6px; }
+.tile.hot:focus-visible { outline: 3px solid #111a4a; outline-offset: 6px; }
 /* 봉투 열림 전환 */
 .env-overlay { position: fixed; inset: 0; z-index: 100; pointer-events: none; }
 .env-bg { position: absolute; inset: 0; background: rgba(249, 250, 251, 0.82); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); opacity: 0; }
