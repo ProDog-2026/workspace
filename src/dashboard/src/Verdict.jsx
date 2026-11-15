@@ -72,7 +72,7 @@ export function MailTable({ rows, onSelect, empty = '해당하는 메일이 없�
             const partial = r.status !== 'ok' && (s === 'danger' || s === 'suspicious')
             return (
               <tr key={r.id} onClick={() => onSelect(r)}>
-                <td className="td-state"><Badge v={s} />{r.dynamic && <div className="dynamic-inbox-cell">동적: {dynamicLabel(r.dynamic)}</div>}</td>
+                <td className="td-state"><Badge v={s} /></td>
                 {/* 클릭은 행(tr)으로 올라감. 버튼은 키보드 접근용 */}
                 <td className="td-subj"><button type="button" className="subj">{r.subject}</button></td>
                 <td className="sender">{r.sender}</td>
