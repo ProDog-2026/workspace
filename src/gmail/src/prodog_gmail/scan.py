@@ -29,3 +29,12 @@ def scan_mail(artifact, mail: Mapping[str, Any]) -> dict[str, Any] | None:
         # Display only; verdict is already fixed by the detector's own thresholds.
         "static_score": round(probability * 100),
     }
+
+
+def model_key(artifact) -> str:
+    """Saved verdicts are reused only while the same detector (and thresholds) is loaded."""
+    if artifact is None:
+        return "none"
+    return "|".join(
+        str(artifact.get(key)) for key in ("created_at", "suspicious_threshold", "danger_threshold")
+    )

@@ -51,6 +51,14 @@ class Store:
                     gmail_message_id TEXT NOT NULL, metadata_json TEXT NOT NULL,
                     updated_at REAL NOT NULL, PRIMARY KEY(account_id, gmail_message_id)
                 );
+                -- Static verdict per mail, keyed by detector version. No body text is stored.
+                CREATE TABLE IF NOT EXISTS mail_scans (
+                    account_id TEXT NOT NULL, gmail_message_id TEXT NOT NULL,
+                    model_key TEXT NOT NULL, detection_json TEXT NOT NULL,
+                    PRIMARY KEY(account_id, gmail_message_id),
+                    FOREIGN KEY(account_id, gmail_message_id)
+                        REFERENCES mails(account_id, gmail_message_id) ON DELETE CASCADE
+                );
             """)
 
     @contextmanager
@@ -272,6 +280,31 @@ class Store:
                 "metadata_json=excluded.metadata_json, updated_at=excluded.updated_at",
                 (account_id, safe["id"], json.dumps(safe, ensure_ascii=False), time.time()),
             )
+
+    def save_scan(self, account_id: str, message_id: str, model_key: str, detection):
+        with self.connection() as conn:
+            conn.execute(
+                "INSERT INTO mail_scans VALUES (?, ?, ?, ?) "
+                "ON CONFLICT(account_id, gmail_message_id) DO UPDATE SET "
+                "model_key=excluded.model_key, detection_json=excluded.detection_json",
+                (account_id, message_id, model_key, json.dumps(detection, ensure_ascii=False)),
+            )
+
+    def cached_scans(self, account_id: str, message_ids: list[str], model_key: str) -> dict:
+        """Saved metadata + static verdict for mails already scanned by this detector."""
+        if not message_ids:
+            return {}
+        marks = ",".join("?" * len(message_ids))
+        with self.connection() as conn:
+            rows = conn.execute(
+                "SELECT m.gmail_message_id, m.metadata_json, s.detection_json FROM mails m "
+                "JOIN mail_scans s USING (account_id, gmail_message_id) "
+                f"WHERE m.account_id=? AND s.model_key=? AND m.gmail_message_id IN ({marks})",
+                (account_id, model_key, *message_ids),
+            ).fetchall()
+        return {
+            row[0]: {**json.loads(row[1]), "detection": json.loads(row[2])} for row in rows
+        }
 
     def forget_account(self, account_id: str):
         with self.connection() as conn:
