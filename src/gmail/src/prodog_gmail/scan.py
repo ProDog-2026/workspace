@@ -34,3 +34,12 @@ def scan_mail(artifact, mail: Mapping[str, Any]) -> dict[str, Any] | None:
             "danger": round(result["danger_threshold"] * 100, 1),
         },
     }
+
+
+def model_key(artifact) -> str:
+    """Saved verdicts are reused only while the same detector (and thresholds) is loaded."""
+    if artifact is None:
+        return "none"
+    return "|".join(
+        str(artifact.get(key)) for key in ("created_at", "suspicious_threshold", "danger_threshold")
+    )
