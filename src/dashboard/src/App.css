@@ -43,9 +43,7 @@
   --neutral-soft: #f0f1f6;
   --accent: #111a4a;
   --accent-soft: #eceef6;
-  /* 데이터(숫자·막대)는 seafoam, 한 페이지 한 곳 강조는 signal orange */
-  --data: #167e6c;
-  --data-soft: #e3f4ec;
+  /* 한 페이지 한 곳 강조는 signal orange */
   --signal: #c94d1a; /* Column #ec652b 은 흰 글자 대비 3.25:1 이라 AA 맞춰 한 단계 어둡게 */
   --on-signal: #ffffff;
   --shadow-btn: 0 1px 3px rgba(17, 26, 74, 0.1), 0 1px 0 rgba(17, 26, 74, 0.05), inset 0 1px 0 rgba(255, 255, 255, 0.5), inset 0 1px 4px rgba(255, 255, 255, 0.5);
@@ -119,8 +117,6 @@
   --neutral-soft: #2a2928;
   --accent: #8ab4ff;
   --accent-soft: #2a2928;
-  --data: #44b48b;
-  --data-soft: #24302b;
   --shadow-btn: none;
   --specimen-line: #333231;
   --shadow-card: 0 0 0 1px #333231;
@@ -227,7 +223,7 @@ b, strong { font-weight: 700; }
 .stat[aria-pressed='true'] .stat-label { color: var(--ink); font-weight: 600; }
 .stat:focus-visible { outline-offset: 2px; }
 .stat-label { display: flex; align-items: center; gap: var(--space-2); white-space: nowrap; font-size: 0.875rem; font-weight: 400; color: var(--muted); }
-.stat-num { font: 500 1.75rem/1.2 var(--display); letter-spacing: -0.01em; color: var(--data); }
+.stat-num { font: 500 1.75rem/1.2 var(--display); letter-spacing: -0.01em; color: var(--ink); }
 .stat-num small { margin-inline-start: 2px; font-size: 0.8125rem; font-weight: 500; letter-spacing: 0; color: var(--muted); }
 .stat-num.alert-danger { color: var(--danger-text); }
 .stat-num.alert-suspicious { color: var(--warn-text); }
@@ -434,9 +430,9 @@ textarea::placeholder { color: var(--muted); }
 /* 자주 쓰인 숨김 수법 */
 .hbars { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-3); max-width: 640px; }
 .hbars li { display: grid; grid-template-columns: 96px 1fr 40px; gap: var(--space-3); align-items: center; font-size: 0.8125rem; color: var(--ink-2); }
-.hbar-track { height: 8px; border-radius: 2px; background: var(--data-soft); overflow: hidden; }
-.hbar { height: 100%; min-width: 2px; border-radius: 2px; background: var(--data); }
-.hbars .num { text-align: right; font-family: var(--mono); color: var(--data); }
+.hbar-track { height: 8px; border-radius: 2px; background: var(--surface-2); overflow: hidden; }
+.hbar { height: 100%; min-width: 2px; border-radius: 2px; background: var(--ink-2); }
+.hbars .num { text-align: right; font-family: var(--mono); color: var(--ink); }
 
 /* 로그인 */
 .login { min-block-size: 100dvh; display: grid; place-items: center; padding: var(--space-10) var(--space-4); background: var(--page); }
