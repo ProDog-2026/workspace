@@ -23,9 +23,13 @@ AI로 화면을 만들거나 고칠 때 이 파일을 먼저 읽힌다. 값은 `
 | `--ink-2` | `#3b3e47` | `#c3cad6` | 본문 |
 | `--muted` | `#696c76` | `#9aa3b2` | 보조 글자, 캡션 |
 | `--brand` | `#111a4a` | `#e9ecf5` | 주 버튼 바탕, 활성 메뉴 |
-| `--accent` | `#111a4a` | `#88deeb` | 링크, 막대 그래프 |
+| `--accent` | `#111a4a` | `#88deeb` | 링크 |
+| `--data` | `#167e6c` | `#44b48b` | 숫자, 막대, 데이터 (Column Seafoam) |
+| `--signal` | `#c94d1a` | `#c94d1a` | 한 페이지 한 곳 강조 면 (Column Signal Orange) |
 
-쓰지 않는 Column 색: Signal Orange `#ec652b`(판정 경고색과 헷갈림), Seafoam 계열(초록이 정상 판정으로 읽힘), Cobalt·Ocean(Column도 장식 전용).
+- `--signal`은 Column `#ec652b`가 흰 글자 대비 3.25:1이라 4.6:1이 되게 어둡게 했다. 페이지당 한 곳만 쓴다. 대시보드에서는 "위험·의심 메일" 강조 카드.
+- `--data`는 개수·건수에 쓴다. 단 위험·의심 개수가 0보다 크면 판정색(`--danger-text`, `--warn-text`)으로 바꾼다. 초록 숫자가 정상으로 읽히면 안 된다.
+- Cobalt·Ocean은 Column에서도 장식 전용이라 쓰지 않는다.
 
 ## 3. 글꼴
 
@@ -46,13 +50,29 @@ AI로 화면을 만들거나 고칠 때 이 파일을 먼저 읽힌다. 값은 `
 - 팝업: `--shadow-pop`. 드로어: `--shadow-drawer`. 한 화면에 큰 그림자는 하나만.
 - 다크 모드는 그림자 대신 1px 테두리.
 
-## 6. 버튼
+## 6. 화면 구성 (Column Layout)
 
-- 주 버튼: `--brand` 바탕, `--on-brand` 글자, 8px. 한 영역에 하나.
-- 보조 버튼: 투명 바탕, `--border` 테두리. 주 버튼 두 개를 나란히 두지 않는다.
+- 페이지 최대 너비 1200px, 카드 안쪽 여백 24px, 카드 사이 24px.
+- 페이지 머리: 점이 붙은 작은 라벨(`.eyebrow`, Tag with Dot) 아래 40px/600 제목.
+- 요약 줄(`.overview`): 왼쪽에 강조 카드(`.feature`, Account Balance Card), 오른쪽에 구분선 없는 숫자 격자(`.stat-strip`, Stats Row). 숫자 28px/500.
+- 표 머리는 바탕색 없이 위아래 hairline만.
+
+## 7. 차트
+
+- Recharts를 쓴다. 모양은 shadcn/ui Area Chart(https://ui.shadcn.com/charts/area)를 따른다.
+- 가로 격자선만, 축선·눈금선 없음, 눈금 글자 12px `--muted`.
+- 면은 위에서 아래로 0.8 → 0.1 그라데이션, 선 2px, 곡선은 `monotone`(`natural`은 0 아래로 내려가 값이 틀려 보임).
+- 툴팁은 흰 카드, 8px 모서리, 색 사각형 + 이름 + 고정폭 숫자.
+- 위험·의심 차트 색은 판정색. 나머지 데이터 차트는 `--data`.
+
+## 8. 버튼
+
+- 주 버튼: `--brand` 바탕, `--on-brand` 글자, 8px, `--shadow-btn`. 한 영역에 하나.
+- 보조 버튼: 투명 바탕, `--ink` 1px 테두리(Column Secondary Outlined).
+- 상단 메뉴: 테두리 없는 글자 메뉴, 올리면 흰 바탕 + hairline, 현재 메뉴만 `--brand` 채움. 주 버튼 두 개를 나란히 두지 않는다.
 - Google 로그인 버튼(`.gbtn`)은 Google 브랜드 규정을 따르므로 이 규칙에서 뺀다.
 
-## 7. 하지 말 것
+## 9. 하지 말 것
 
 - 그라데이션 배경, 유리 효과, 네온, 이모지 아이콘.
 - 순수 검정 `#000` 글자. `--ink`나 `--ink-2`를 쓴다.
