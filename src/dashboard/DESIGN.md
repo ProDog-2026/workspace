@@ -42,7 +42,20 @@ AI로 화면을 만들거나 고칠 때 이 파일을 먼저 읽힌다. 값은 `
 
 - 카드, 패널, 입력, 버튼, 메뉴: 8px (`--r-card`, `--r-box`, `--r-ctl`).
 - 완전히 둥근 모양(`--r-pill`)은 배지, 태그, 진행 막대에만. 버튼에는 쓰지 않는다.
-- 간격은 4px 단위. 카드 안쪽 여백 24px, 요소 사이 8px.
+- 간격은 `--space-1`(4px) ~ `--space-12`(48px) 토큰만 쓴다. `padding: 13px`처럼 px를 직접 쓰지 않는다.
+- 화면 폭에 따라 변하는 여백은 `clamp()` 토큰을 쓴다: `--page-pad-inline`(16~32px), `--page-pad-block`(24~40px), `--section-gap`(16~24px), `--card-pad`(16~24px).
+- 요소 사이 간격은 자식 margin 대신 부모의 `gap`.
+- 여백·위치는 논리 속성(`margin-block-start`, `padding-inline`)으로 쓴다.
+
+## 4-1. 웹 표준 규칙 (Google Modern Web Guidance)
+
+출처: https://developer.chrome.com/docs/modern-web-guidance (`css`, `css-layout`, `typography`, `fluid-scaling`, `responsive-design` 가이드)
+
+- 글자 크기는 rem. px 금지 (브라우저 글자 크기 설정을 따르게).
+- 글자가 들어가는 버튼·배지·태그에 고정 `height` 금지. `min-block-size`를 쓴다. 표 칸(th, td)은 예외(`height`가 최소 높이로 동작).
+- 제목과 표 머리는 `text-wrap: balance`, 문단은 `text-wrap: pretty`. 설명 문단 최대 폭은 `--measure`(64ch).
+- 페이지 안 배치 전환(요약 줄, 차트 줄)은 화면 폭이 아니라 `.page` 컨테이너 폭 기준 `@container page`로 한다.
+- 전체 화면 높이는 `100vh` 대신 `100dvh`.
 
 ## 5. 그림자
 
