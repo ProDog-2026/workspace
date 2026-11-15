@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useState } from 'react'
+import { BookOpenCheck, FlaskConical, LayoutDashboard, ScanSearch, Settings as SettingsIcon, ShieldCheck } from 'lucide-react'
 import { gmail } from './api'
 import Admin from './Admin'
 import Dashboard from './Dashboard'
@@ -11,7 +12,7 @@ import { DEFAULT_RULES } from './rules'
 import { Logo, ThemeToggle } from './ui'
 
 const Dynamic = lazy(() => import('./Dynamic'))
-const MENU = [['', '대시보드'], ['states', '판정 안내'], ['scan', '메일 검사'], ['dynamic', '동적 검사'], ['settings', '설정'], ['admin', '관리자']]
+const MENU = [['', '대시보드', LayoutDashboard], ['states', '판정 안내', BookOpenCheck], ['scan', '메일 검사', ScanSearch], ['dynamic', '동적 검사', FlaskConical], ['settings', '설정', SettingsIcon], ['admin', '관리자', ShieldCheck]]
 // 주소에 # 이 없으면(처음 들어왔을 때) 소개 화면.
 // 단 Google OAuth 가 끝나면 Gmail 모듈이 /?connected=1 또는 /?error=코드 로 돌려보냄 -> 설정 화면으로
 const currentRoute = () => location.hash !== '' ? location.hash.split('?')[0].replace(/^#\/?/, '')
@@ -37,21 +38,23 @@ export default function App() {
 
   return (
     <div className="app">
-      <header className="topbar">
-        <a href="#/intro" className="brand" aria-label="ProDog"><span className="brand-mark"><Logo size={40} /></span></a>
-        <nav className="pillnav" aria-label="메뉴">
-          {MENU.map(([path, label]) => (
-            <a key={path} href={`#/${path}`} aria-current={route === path ? 'page' : undefined}>{label}</a>
+      <aside className="sidebar">
+        <a href="#/intro" className="brand" aria-label="ProDog"><span className="brand-mark"><Logo size={36} /></span></a>
+        <nav className="sidenav" aria-label="메뉴">
+          {MENU.map(([path, label, Icon]) => (
+            <a key={path} href={`#/${path}`} aria-current={route === path ? 'page' : undefined}><Icon size={18} strokeWidth={1.75} aria-hidden="true" />{label}</a>
           ))}
         </nav>
-        <div className="top-right">
-          <ThemeToggle />
-          <span className="gnb-user">{email === undefined ? '연결 확인 중' : email ?? 'Gmail 연결 안 됨'}</span>
-          {email === undefined ? null : email
-            ? <a className="btn nav-cta" href="#/settings">연동 관리</a>
-            : <a className="btn nav-cta" href="#/login">로그인</a>}
+        <div className="side-foot">
+          <span className="side-user">{email === undefined ? '연결 확인 중' : email ?? 'Gmail 연결 안 됨'}</span>
+          <div className="side-actions">
+            {email === undefined ? null : email
+              ? <a className="btn nav-cta" href="#/settings">연동 관리</a>
+              : <a className="btn nav-cta" href="#/login">로그인</a>}
+            <ThemeToggle />
+          </div>
         </div>
-      </header>
+      </aside>
       <main className="page">
         {route === 'scan' ? <Scan rules={rules} />
           : route === 'states' ? <States />

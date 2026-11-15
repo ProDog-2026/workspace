@@ -91,7 +91,7 @@ export default function Dashboard() {
   return (
     <>
       <header className="page-head">
-        <div><p className="eyebrow">받은편지함 현황</p><h1>대시보드</h1></div>
+        <h1>대시보드</h1>
         <div className="ctl-row">
           <span id="period-label">조회 기간</span>
           <div className="btn-group" role="group" aria-labelledby="period-label">
