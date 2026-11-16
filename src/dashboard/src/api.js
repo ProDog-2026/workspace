@@ -1,11 +1,16 @@
 // Gmail 수집 모듈 API (vite.config.js 프록시). 계약: src/gmail/docs/integration.md
 const DOWN = 'Gmail 모듈에 연결하지 못했어요. 대시보드(npm run dev)와 수집 서버(src/gmail, 8765)가 둘 다 켜져 있는지 확인하세요.'
 
+// 서버가 답을 못 한 경우의 오류 코드. 서버가 준 오류(authentication_required 등)와 화면에서 구분하려고 붙임
+export const UNREACHABLE = 'server_unreachable'
+
 export async function gmail(path, csrf) {
   // fetch 자체 실패 = dev 서버가 꺼짐. 502 = dev 서버는 켜졌는데 수집 서버가 꺼짐
-  const res = await fetch(path, csrf ? { method: 'POST', headers: { 'X-CSRF-Token': csrf } } : undefined).catch(() => { throw new Error(DOWN) })
+  const res = await fetch(path, csrf ? { method: 'POST', headers: { 'X-CSRF-Token': csrf } } : undefined)
+    .catch(() => { throw Object.assign(new Error(DOWN), { code: UNREACHABLE }) })
   const body = await res.json().catch(() => ({}))
-  if (!res.ok) throw Object.assign(new Error(body.error?.message ?? DOWN), { code: body.error?.code })
+  // 오류 본문이 없으면(프록시의 502 등) 수집 서버가 답하지 못한 것
+  if (!res.ok) throw Object.assign(new Error(body.error?.message ?? DOWN), { code: body.error ? body.error.code : UNREACHABLE })
   return body
 }
 

@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { gmail, toRow } from './api'
 import { TYPES } from './rules'
-import { Mark, STATES, bySeverity, stateOf } from './ui'
+import { inboxState } from './inboxState'
+import { Mark, STATES, StatePanel, bySeverity, stateOf } from './ui'
 import { MailDrawer, MailTable, shortType } from './Verdict'
 import useDynamicInbox from './useDynamicInbox'
 
@@ -25,7 +26,8 @@ const FILTERS = {
 // 더 보려면 '더 불러오기'로 next_page_token 을 넘겨 다음 20건을 이어 받음
 const LIMIT = 20
 
-export default function Dashboard() {
+// onReload: 다시 불러올 때 상단의 연결 표시도 같이 갱신 (서버가 다시 켜진 경우)
+export default function Dashboard({ onReload }) {
   const [days, setDays] = useState(null) // null = 전체 기간
   const [filter, setFilter] = useState('all')
   const [selected, setSelected] = useState(null)
@@ -41,21 +43,26 @@ export default function Dashboard() {
       setNext(d.next_page_token)
     })
   useEffect(() => { load().catch(setError) }, [])
+  // 처음부터 다시: 이전 목록을 비워 불러오는 동안 옛 결과가 새 결과처럼 보이지 않게 함
+  const reload = () => { setError(null); setScans(null); setNext(null); onReload?.(); load().catch(setError) }
   const loadMore = () => {
     setMore({ busy: true, error: '' })
     load(next).then(() => setMore({ busy: false, error: '' }), (e) => setMore({ busy: false, error: e.message }))
   }
 
-  if (error || !scans) {
+  const state = inboxState(error, scans)
+  if (state) {
+    const { action } = state
     return (
       <>
         <header className="page-head"><h1>대시보드</h1></header>
-        <section className="panel"><p className="empty">
-          {!error ? '받은편지함을 불러오는 중…'
-            : error.code === 'authentication_required'
-              ? <>연결된 Gmail이 없어요. <a href="#/settings">설정</a>에서 Gmail을 연결하세요.</>
-              : error.message}
-        </p></section>
+        <section className="panel">
+          <StatePanel title={state.title} busy={state.kind === 'loading'} action={!action ? null
+            : action.href ? <a className="btn primary" href={action.href}>{action.label}</a>
+            : <button type="button" className="btn" onClick={reload}>{action.label}</button>}>
+            {state.body}
+          </StatePanel>
+        </section>
       </>
     )
   }

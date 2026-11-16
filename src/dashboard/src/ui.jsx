@@ -84,6 +84,17 @@ export function Mark({ v, size = 16 }) {
   )
 }
 
+// 목록을 못 보여 줄 때: 무슨 상태인지(제목) + 무엇을 하면 되는지(본문) + 다음 행동 하나
+export function StatePanel({ title, children, action, busy = false }) {
+  return (
+    <div className="state" role={busy ? 'status' : undefined} aria-busy={busy || undefined}>
+      <p className="state-title">{title}</p>
+      {children && <p className="state-body">{children}</p>}
+      {action}
+    </div>
+  )
+}
+
 // 목록·표의 판정 라벨: 마크 + 글자. 위험만 빨간 채움, 나머지는 테두리만 (알약·옅은 배경 없음)
 export function Badge({ v }) {
   return <span className={`badge ${v}`}><Mark v={v} size={12} />{STATES[v].label}</span>

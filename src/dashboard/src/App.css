@@ -160,6 +160,9 @@ b, strong { font-weight: 700; }
 .panel-body { padding: 20px 28px 28px; }
 .panel-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 14px 28px; border-top: 1px solid var(--grid); background: var(--surface); }
 .empty { padding: 40px 20px; text-align: center; color: var(--muted); }
+.state { display: grid; justify-items: center; gap: 10px; padding: 48px 20px; text-align: center; }
+.state-title { font-size: 15px; font-weight: 700; color: var(--ink); }
+.state-body { max-width: 46ch; color: var(--muted); line-height: 1.65; }
 .result-empty { display: grid; place-items: center; min-height: 360px; }
 
 /* 판정 현황 strip (= list filter) */
