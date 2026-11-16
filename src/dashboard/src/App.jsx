@@ -3,6 +3,7 @@ import { UNREACHABLE, gmail } from './api'
 import Admin from './Admin'
 import Dashboard from './Dashboard'
 import Landing from './Landing'
+import Guide from './Guide'
 import Login from './Login'
 import Scan from './Scan'
 import Settings from './Settings'
@@ -11,7 +12,7 @@ import { DEFAULT_RULES } from './rules'
 import { Logo, ThemeToggle } from './ui'
 
 const Dynamic = lazy(() => import('./Dynamic'))
-const MENU = [['', '대시보드'], ['states', '판정 안내'], ['scan', '메일 검사'], ['dynamic', '동적 검사'], ['settings', '설정'], ['admin', '관리자']]
+const MENU = [['', '대시보드'], ['guide', '사용법'], ['states', '판정 안내'], ['scan', '메일 검사'], ['dynamic', '동적 검사'], ['settings', '설정'], ['admin', '관리자']]
 // 주소에 # 이 없으면(처음 들어왔을 때) 소개 화면.
 // 단 Google OAuth 가 끝나면 Gmail 모듈이 /?connected=1 또는 /?error=코드 로 돌려보냄 -> 설정 화면으로
 const currentRoute = () => location.hash !== '' ? location.hash.split('?')[0].replace(/^#\/?/, '')
@@ -55,6 +56,7 @@ export default function App() {
       </header>
       <main className="page">
         {route === 'scan' ? <Scan rules={rules} />
+          : route === 'guide' ? <Guide />
           : route === 'states' ? <States />
           : route === 'settings' ? <Settings />
           : route === 'admin' ? <Admin rules={rules} setRules={setRules} />
