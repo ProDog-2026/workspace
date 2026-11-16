@@ -44,7 +44,7 @@ export default function Scan({ rules }) {
               <button type="button" className="btn" disabled={!sample} onClick={() => { setHtml(SAMPLES[sample]); setResult(null) }}>불러오기</button>
             </div>
           </div>
-          <textarea id="mail-html" className="code" value={html} onChange={(e) => setHtml(e.target.value)} spellCheck={false} placeholder="메일 HTML을 붙여넣으세요" />
+          <textarea id="mail-html" className="code" value={html} onChange={(e) => { setHtml(e.target.value); setResult(null) }} spellCheck={false} placeholder="메일 HTML을 붙여넣으세요" />
           <div className="panel-foot">
             <span className="tag">LLM 분석 끔</span>
             <button type="button" className="btn lg primary" onClick={run}>검사하기</button>
