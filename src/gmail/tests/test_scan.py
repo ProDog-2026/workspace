@@ -69,3 +69,9 @@ def test_mail_list_carries_detection(client):
 def test_mail_list_without_detector_has_null_detection(client):
     messages = client.get("/api/mails").json()["messages"]
     assert {m["detection"] for m in messages} == {None}
+
+
+def test_detection_carries_thresholds_for_the_verdict_reason():
+    result = scan_mail(artifact(probability=0.08), MAIL)
+    assert result["verdict"] == "suspicious"
+    assert result["thresholds"] == {"suspicious": 5.0, "danger": 40.0}

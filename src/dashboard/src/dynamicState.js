@@ -24,7 +24,7 @@ export function dynamicStatus(row) {
   const label = dynamicLabel(job)
   if (isActive(job)) return { phase: 'active', label, note: `검사가 끝날 때까지 AI에게 맡기지 마세요. 끝나면 결과가 여기에 나와요.` }
   if (job.status === 'completed') return { phase: 'done', label, note: job.observation === 'observed'
-    ? '에이전트가 메일 속 지시를 따라 작업과 무관한 행동을 했어요.'
+    ? '요약 외 도구 요청 또는 테스트 환경의 효과가 관찰됐어요. 메일 지시를 따랐다고 확정한 것은 아니에요.'
     : '이번 실행에선 이상 행동이 없었어요. 안전하다는 보장은 아니에요.' }
   if (job.status === 'incomplete') return { phase: 'incomplete', label, note: `시간·호출 한도나 오류로 검사가 끝나지 않았어요. ${NOT_SAFE}` }
   return { phase: 'failed', label, note: `동적 검사가 실패했거나 중지됐어요. ${NOT_SAFE}` }

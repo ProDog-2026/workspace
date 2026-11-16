@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { scoreReason } from './api'
 import { TYPES } from './rules'
 import { Badge, CloseIcon, Mark, STATES, fmtShort, fmtTime, stateOf } from './ui'
 import { dynamicError, dynamicLabel, dynamicStatus } from './dynamicState'
@@ -72,7 +73,7 @@ export function MailTable({ rows, onSelect, empty = '해당하는 메일이 없�
             const partial = r.status !== 'ok' && (s === 'danger' || s === 'suspicious')
             return (
               <tr key={r.id} onClick={() => onSelect(r)}>
-                <td className="td-state"><Badge v={s} />{r.dynamic && <div className="dynamic-inbox-cell">동적: {dynamicLabel(r.dynamic)}</div>}</td>
+                <td className="td-state"><Badge v={s} /></td>
                 {/* 클릭은 행(tr)으로 올라감. 버튼은 키보드 접근용 */}
                 <td className="td-subj"><button type="button" className="subj">{r.subject}</button></td>
                 <td className="sender">{r.sender}</td>
@@ -159,7 +160,7 @@ export function VerdictDetail({ r }) {
           )}
           {(state === 'failed' || r.status === 'failed') && <tr><th scope="row">원인</th><td>{r.status_detail ?? '판정 결과가 없어요.'}</td></tr>}
           {[r.final_score, r.static_score, r.llm_score].some((score) => score != null) && (
-            <tr><th scope="row">탐지 모델 출력</th><td><Score r={r} /></td></tr>
+            <tr><th scope="row">탐지 모델 출력</th><td><Score r={r} />{scoreReason(r) && <p className="sub">{scoreReason(r)}</p>}</td></tr>
           )}
         </tbody>
       </table>

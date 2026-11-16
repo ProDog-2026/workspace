@@ -438,3 +438,33 @@ def test_list_keeps_other_mails_when_one_is_throttled(google_client, monkeypatch
     messages = client.get("/api/mails").json()["messages"]
     assert [m["warnings"] for m in messages if m["id"] == "demo-2"] == [["rate_limited"]]
     assert sum(m["body_hash"] is not None for m in messages) == 2
+
+
+def message_reads(fake):
+    return sum("/messages/" in request.url.path for request in fake.calls)
+
+
+def test_inbox_reuses_saved_results_and_rescans_on_model_change(google_client):
+    client, fake = google_client
+    callback(client, oauth_start(client)["state"][0])
+    first = client.get("/api/mails").json()["messages"]
+    reads = message_reads(fake)
+    assert reads == len(first) > 0
+    second = client.get("/api/mails").json()["messages"]
+    assert message_reads(fake) == reads  # Already-seen mails skip the Gmail body fetch.
+    assert second == first
+    # A new detector invalidates saved verdicts.
+    client.app.state.detector = {"created_at": "new-model"}
+    client.get("/api/mails")
+    assert message_reads(fake) == reads * 2
+
+
+def test_disconnect_forgets_saved_results(google_client):
+    client, fake = google_client
+    callback(client, oauth_start(client)["state"][0])
+    client.get("/api/mails")
+    account = client.app.state.store.session(client.cookies.get(COOKIE))["account_id"]
+    assert client.app.state.store.cached_scans(account, [m["id"] for m in demo_messages()], "none")
+    assert post(client, "/api/disconnect").status_code == 200
+    with client.app.state.store.connection() as db:
+        assert db.execute("SELECT count(*) FROM mail_scans").fetchone()[0] == 0
