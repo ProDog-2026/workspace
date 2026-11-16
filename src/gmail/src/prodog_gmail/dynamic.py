@@ -338,7 +338,10 @@ class DynamicService:
             async with self.lock:
                 if self.deploying:
                     return
-                if self.db.get(jid)["status"] not in {"queued", "unreachable"}:
+                current = self.db.get(jid)
+                # Disconnect may delete the job while the mail was loading.
+                if current is None or current["status"] not in {"queued", "unreachable"}:
+                    self.mail_memory.pop(jid, None)
                     return
                 if job["owner"] in self.revoked_owners:
                     self.db.update(jid, status="stopped")
@@ -365,8 +368,11 @@ class DynamicService:
                 self.mail_memory.pop(jid, None)
                 self.wake.set()
         except ConnectorError as exc:
-            status = self.db.get(jid)["status"]
-            unknown = status == "submitting" and exc.code in {
+            current = self.db.get(jid)
+            if current is None:
+                self.mail_memory.pop(jid, None)
+                return
+            unknown = current["status"] == "submitting" and exc.code in {
                 "dynamic_unavailable",
                 "dynamic_invalid_response",
                 "dynamic_request_failed",
@@ -380,7 +386,11 @@ class DynamicService:
             if not unknown:
                 self.mail_memory.pop(jid, None)
         except Exception:
-            unknown = self.db.get(jid)["status"] == "submitting"
+            current = self.db.get(jid)
+            if current is None:
+                self.mail_memory.pop(jid, None)
+                return
+            unknown = current["status"] == "submitting"
             self.db.update(
                 jid,
                 status="unreachable" if unknown else "failed",
