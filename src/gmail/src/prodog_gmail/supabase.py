@@ -1,5 +1,7 @@
 """Server-side writes to Supabase (PostgREST). Metadata and verdicts only, never mail bodies."""
 
+import uuid
+
 import httpx
 
 from .errors import ConnectorError
@@ -20,7 +22,6 @@ class Supabase:
     def __init__(self, config, client: httpx.AsyncClient):
         key = config.supabase_service_key.get_secret_value()
         self.base = config.supabase_url.rstrip("/") + "/rest/v1"
-        self.user_id = config.supabase_user_id
         self.client = client
         self.headers = {"apikey": key, "Authorization": f"Bearer {key}"}
 
@@ -39,19 +40,20 @@ class Supabase:
             raise ConnectorError("supabase_error", "Supabase 저장에 실패했습니다.", 502)
         return response.json() if response.content else []
 
-    async def save_page(self, email: str, messages: list[dict]) -> int:
+    async def save_page(self, user_id: str, email: str, messages: list[dict]) -> int:
+        user_id = str(uuid.UUID(user_id))
         connection = await self._request(
             "POST",
             "gmail_connections",
             params={"on_conflict": "user_id,email"},
-            rows=[{"user_id": self.user_id, "email": email, "status": "active"}],
+            rows=[{"user_id": user_id, "email": email, "status": "active"}],
             prefer=MERGE,
         )
         connection_id = connection[0]["id"]
         # Explicit allowlist: a body field added to the parser later cannot leak through here.
         mail_rows = [
             {
-                "user_id": self.user_id,
+                "user_id": user_id,
                 "connection_id": connection_id,
                 "gmail_id": m["id"],
                 "subject": m["subject"],
@@ -74,7 +76,7 @@ class Supabase:
         )
         mail_ids = {row["gmail_id"]: row["id"] for row in saved}
         results = [
-            self._analysis_row(mail_ids[m["id"]], m["detection"])
+            self._analysis_row(user_id, mail_ids[m["id"]], m["detection"])
             for m in messages
             if m.get("detection") and m["id"] in mail_ids
         ]
@@ -82,10 +84,10 @@ class Supabase:
             await self._request("POST", "analysis_results", rows=results)
         return len(saved)
 
-    def _analysis_row(self, mail_id: str, detection: dict) -> dict:
+    def _analysis_row(self, user_id: str, mail_id: str, detection: dict) -> dict:
         ok = detection["status"] == "ok"
         return {
-            "user_id": self.user_id,
+            "user_id": user_id,
             "mail_id": mail_id,
             "status": "succeeded" if ok else "failed",
             "verdict": detection["verdict"],
@@ -96,10 +98,34 @@ class Supabase:
             "status_detail": None if ok else "탐지 중 오류가 났어요.",
         }
 
-    async def delete_connection(self, email: str) -> None:
+    async def delete_connection(self, user_id: str, email: str) -> None:
+        user_id = str(uuid.UUID(user_id))
         # mail_messages and analysis_results go with it (ON DELETE CASCADE in SUPABASE_TABLE.md).
         await self._request(
             "DELETE",
             "gmail_connections",
-            params={"user_id": f"eq.{self.user_id}", "email": f"eq.{email}"},
+            params={"user_id": f"eq.{user_id}", "email": f"eq.{email}"},
         )
+
+    async def authenticate(self, id_token: str, access_token: str, verifier: str,
+                           google_sub: str) -> str:
+        try:
+            response = await self.client.post(
+                self.base.removesuffix("/rest/v1") + "/auth/v1/token",
+                params={"grant_type": "id_token"}, headers=self.headers,
+                json={"provider": "google", "id_token": id_token,
+                      "access_token": access_token, "nonce": "oidc:" + verifier},
+            )
+            if response.status_code != 200:
+                raise ValueError("auth rejected")
+            user = response.json()["user"]
+            matching = [identity for identity in user["identities"]
+                        if identity.get("provider") == "google"
+                        and identity.get("identity_data", {}).get("sub") == google_sub]
+            if len(matching) != 1:
+                raise ValueError("provider binding")
+            return str(uuid.UUID(user["id"]))
+        except (httpx.HTTPError, ValueError, KeyError, TypeError) as exc:
+            raise ConnectorError(
+                "identity_unavailable", "사용자 로그인을 확인하지 못했습니다. 다시 시도하세요.", 502
+            ) from exc

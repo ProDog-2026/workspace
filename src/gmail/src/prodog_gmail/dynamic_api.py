@@ -1,6 +1,8 @@
 """Authenticated adapter routes; the browser never talks to the control API directly."""
 
+import hashlib
 import re
+import uuid
 
 from fastapi import Query, Request
 from fastapi.responses import JSONResponse
@@ -14,6 +16,8 @@ from .scan import scan_mail
 def install_dynamic_routes(app, session, csrf, limit_requests, get_mail):
     def identity(request, *, write=False, gmail=False):
         secret, current = csrf(request) if write else session(request, required=gmail)
+        if app.state.settings.app_mode == "google":
+            _, current = session(request, required=True)
         if not current:
             raise ConnectorError(
                 "authentication_required", "페이지를 새로고침해 세션을 연결하세요.", 401
@@ -89,13 +93,19 @@ def install_dynamic_routes(app, session, csrf, limit_requests, get_mail):
             }
         return {
             **data,
-            "prompts": [{**p, "editable": p["id"] in editable} for p in data["prompts"]],
+            "prompts": [{**p, "editable": p["id"] in editable} for p in data["prompts"]
+                        if app.state.settings.app_mode != "google"
+                        or p.get("builtin") or p["id"] in editable],
         }
 
     @app.post("/api/dynamic/prompts")
     async def new_prompt(request: Request, body: PromptInput):
         owner, _ = identity(request, write=True)
-        result = await app.state.dynamic.request("POST", "/prompts", payload=body.model_dump())
+        payload = body.model_dump()
+        if app.state.settings.app_mode == "google":
+            prefix = hashlib.sha256(owner.encode()).hexdigest()[:20]
+            payload["id"] = "u_" + prefix + "_" + (body.id or uuid.uuid4().hex)[:17]
+        result = await app.state.dynamic.request("POST", "/prompts", payload=payload)
         with app.state.store.connection() as db:
             db.execute("INSERT INTO dynamic_prompt_owners VALUES (?, ?)", (result["id"], owner))
         return result
@@ -163,6 +173,10 @@ def install_dynamic_routes(app, session, csrf, limit_requests, get_mail):
     @app.post("/api/dynamic/import")
     async def import_experiments(request: Request):
         owner, _ = identity(request, write=True)
+        if app.state.settings.app_mode == "google":
+            raise ConnectorError(
+                "ownership_unknown", "소유자를 확인할 수 없는 기록은 가져올 수 없어요.", 403
+            )
         return await app.state.dynamic.import_experiments(owner)
 
     @app.get("/api/dynamic/jobs")
@@ -198,5 +212,23 @@ def install_dynamic_routes(app, session, csrf, limit_requests, get_mail):
                 except ConnectorError:
                     # A failed remote stop must remain visible to the worker, not become "safe".
                     app.state.dynamic.db.update(job["id"], error_code="disconnect_stop_failed")
+        # Keep mappings until every remote deletion succeeds, so a retry has exact IDs.
+        for job in app.state.dynamic.db.listing(owner):
+            if job["run_id"]:
+                await app.state.dynamic.request("DELETE", f"/runs/{job['run_id']}", timeout=25)
+            app.state.dynamic.mail_memory.pop(job["id"], None)
+        with app.state.store.connection() as db:
+            prompts = db.execute(
+                "SELECT id FROM dynamic_prompt_owners WHERE owner=?", (owner,)
+            ).fetchall()
+        for prompt in prompts:
+            try:
+                await app.state.dynamic.request("DELETE", f"/prompts/{prompt[0]}")
+            except ConnectorError as exc:
+                if exc.code != "prompt_not_found":
+                    raise
+        with app.state.store.connection() as db:
+            for table in ("dynamic_jobs", "dynamic_settings", "dynamic_prompt_owners"):
+                db.execute(f"DELETE FROM {table} WHERE owner=?", (owner,))
 
     return cancel_owner

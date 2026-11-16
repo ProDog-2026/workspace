@@ -139,6 +139,15 @@ class DynamicService:
             raise ConnectorError(
                 "prompt_not_found", "선택한 프롬프트가 없습니다. 설정을 다시 저장하세요.", 409
             )
+        with self.db.store.connection() as db:
+            account = db.execute("SELECT mode FROM accounts WHERE id=?", (owner,)).fetchone()
+            if account and account["mode"] == "google" and not prompt.get("builtin"):
+                owned = db.execute(
+                    "SELECT 1 FROM dynamic_prompt_owners WHERE id=? AND owner=?",
+                    (prompt["id"], owner),
+                ).fetchone()
+                if not owned:
+                    raise ConnectorError("prompt_read_only", "내 프롬프트를 선택하세요.", 403)
         return options, fingerprint(prompt["text"])
 
     async def enqueue(
@@ -329,7 +338,10 @@ class DynamicService:
             async with self.lock:
                 if self.deploying:
                     return
-                if self.db.get(jid)["status"] not in {"queued", "unreachable"}:
+                current = self.db.get(jid)
+                # Disconnect may delete the job while the mail was loading.
+                if current is None or current["status"] not in {"queued", "unreachable"}:
+                    self.mail_memory.pop(jid, None)
                     return
                 if job["owner"] in self.revoked_owners:
                     self.db.update(jid, status="stopped")
@@ -356,8 +368,11 @@ class DynamicService:
                 self.mail_memory.pop(jid, None)
                 self.wake.set()
         except ConnectorError as exc:
-            status = self.db.get(jid)["status"]
-            unknown = status == "submitting" and exc.code in {
+            current = self.db.get(jid)
+            if current is None:
+                self.mail_memory.pop(jid, None)
+                return
+            unknown = current["status"] == "submitting" and exc.code in {
                 "dynamic_unavailable",
                 "dynamic_invalid_response",
                 "dynamic_request_failed",
@@ -371,7 +386,11 @@ class DynamicService:
             if not unknown:
                 self.mail_memory.pop(jid, None)
         except Exception:
-            unknown = self.db.get(jid)["status"] == "submitting"
+            current = self.db.get(jid)
+            if current is None:
+                self.mail_memory.pop(jid, None)
+                return
+            unknown = current["status"] == "submitting"
             self.db.update(
                 jid,
                 status="unreachable" if unknown else "failed",

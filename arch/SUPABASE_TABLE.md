@@ -1,5 +1,9 @@
 # Gmail 수집·Supabase·대시보드 데이터 계약
 
+## #70 변경 사항
+
+Google 모드의 로그인과 사용자별 저장 구현은 [사용자 분리 안내](../src/gmail/docs/user-isolation.md)를 따른다. 새 연결은 검증된 OIDC `sub`와 Supabase Auth `user_id`를 묶는다. 아래의 이메일 기반 로컬 프로토타입 설명과 "ID 토큰을 받지 않는다"는 설명은 이전 상태다. 신규 DB용 실제 SQL은 [supabase-gmail-schema.sql](supabase-gmail-schema.sql)이며, 기존 DB에 자동 적용하지 않는다.
+
 이 문서는 이슈 #6의 저장 구조를 `src/gmail/docs/collect-api-contract.md` 및 `src/dashboard/schema.sql`과 맞춘다. 현재 Gmail 모듈은 로컬 SQLite와 자체 세션을 쓰는 프로토타입이다. 아래 매핑은 Supabase Auth와 수집 서버를 연결할 때 적용할 계약이며, 현재 모듈이 이미 Supabase에 쓰고 있다는 뜻이 아니다.
 
 ## 결정 요약

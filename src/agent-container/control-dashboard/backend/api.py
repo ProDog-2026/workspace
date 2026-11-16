@@ -4,6 +4,7 @@ import uuid
 import json
 import ipaddress
 import os
+import re
 from pathlib import Path
 from typing import Any
 
@@ -171,6 +172,12 @@ def create_dashboard_app(manager: RunManager):
     @app.post("/runs/{run_id}/stop")
     async def stop_run(run_id: str):
         return manager.stop(run_id)
+
+    @app.delete("/runs/{run_id}")
+    async def delete_run(run_id: str):
+        if not re.fullmatch(r"[0-9a-f]{32}", run_id):
+            raise RunError("invalid_run_id", 422)
+        return await manager.purge(run_id)
 
     @app.post("/connections/check")
     async def check_connection(body: CheckConnection):
