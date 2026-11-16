@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useId, useState } from 'react'
+import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { gmail, toRow } from './api'
 import { TYPES } from './rules'
 import { inboxState } from './inboxState'
@@ -16,7 +17,8 @@ const between = (rows, from, to) => rows.filter((r) => { const t = new Date(r.re
 const countOf = (rows, ...states) => rows.filter((r) => states.includes(stateOf(r))).length
 
 // 판정 현황 줄 = 목록 필터 (스마트스토어센터 주문 현황처럼 숫자 칸을 누르면 아래 목록이 바뀜)
-const STRIP = ['flagged', 'danger', 'suspicious', 'incomplete', 'failed', 'pending', 'all']
+// 위험·의심 합계는 강조 카드(feature)로 따로 뺌. 나머지 6칸이 Stats Row
+const STRIP = ['danger', 'suspicious', 'incomplete', 'failed', 'pending', 'all']
 const FILTERS = {
   flagged: { label: '위험·의심', states: ['danger', 'suspicious'] },
   ...Object.fromEntries(['danger', 'suspicious', 'incomplete', 'failed', 'pending'].map((s) => [s, { label: STATES[s].label, states: [s] }])),
@@ -109,23 +111,31 @@ export default function Dashboard({ onReload }) {
 
       {dynamicNotice && <p className="dynamic-notice" role="status">{dynamicNotice} <a href="#/dynamic">동적 검사 설정</a></p>}
 
-      <section className="stat-strip" aria-label="판정별 메일 수">
+      <section className="overview">
+      <button type="button" className="feature" aria-pressed={filter === 'flagged'} onClick={() => setFilter('flagged')}>
+        <span className="feature-label">{period} 위험·의심 메일</span>
+        <span className="feature-num">{flaggedTotal}<small>건</small></span>
+        <Sparkline data={daily} />
+        <span className="feature-sub">누르면 아래 목록에 이 메일만 보여요</span>
+      </button>
+      <div className="stat-strip" role="group" aria-label="판정별 메일 수">
         {STRIP.map((k) => {
           const n = countOf(cur, ...FILTERS[k].states)
           return (
             <button key={k} type="button" className="stat" aria-pressed={filter === k} onClick={() => setFilter(k)}>
               <span className="stat-label">{STATES[k] && <Mark v={k} size={14} />}{FILTERS[k].label}</span>
-              <span className={`stat-num${k === 'danger' && n > 0 ? ' alert' : ''}`}>{n}<small>건</small></span>
+              <span className={`stat-num${n > 0 && (k === 'danger' || k === 'suspicious') ? ` alert-${k}` : ''}`}>{n}<small>건</small></span>
               {k === 'all' && <span className="stat-sub">정상 {countOf(cur, 'safe')}건</span>}
             </button>
           )
         })}
+      </div>
       </section>
 
       <section className="chart-row">
         <div className="panel">
           <div className="panel-head">
-            <h2>일별 탐지<span className="count">위험·의심 <b>{flaggedTotal}</b>건</span></h2>
+            <div><h2>일별 탐지</h2><p className="panel-desc">{period} 위험·의심 메일 추이</p></div>
             <div className="legend" aria-hidden="true"><span><i className="danger" />위험</span><span><i className="suspicious" />의심</span></div>
           </div>
           <div className="panel-body"><DailyChart data={daily} /></div>
@@ -168,30 +178,58 @@ export default function Dashboard({ onReload }) {
   )
 }
 
-// 일별 위험·의심 누적 막대. 위쪽 칸이 위험, 마우스·키보드 포커스로 그날 숫자를 보여 줌
-function DailyChart({ data }) {
-  const max = Math.max(4, ...data.map((d) => d.danger + d.suspicious))
-  const top = Math.ceil(max / 4) * 4
-  const every = data.length > 7 ? Math.ceil(data.length / 7) : 1
+const SERIES = [['danger', '위험', 'var(--danger)'], ['suspicious', '의심', 'var(--warn)']]
+
+function ChartTip({ active, payload }) {
+  if (!active || !payload?.length) return null
+  const d = payload[0].payload
   return (
-    <div className="dchart">
-      <div className="dchart-y" aria-hidden="true">{[top, top / 2, 0].map((t) => <span key={t}>{t}</span>)}</div>
-      <div className={`dchart-plot${data.length > 7 ? ' dense' : ''}`}>
-        {data.map((d, i) => {
-          const n = d.danger + d.suspicious
-          const showX = i % every === 0 || i === data.length - 1
-          return (
-            <div key={d.key} className="dcol" tabIndex={0} aria-label={`${d.label} 위험 ${d.danger}건, 의심 ${d.suspicious}건`}>
-              <div className="dbar" style={{ height: `${(n / top) * 100}%` }}>
-                {d.danger > 0 && <i className="danger" style={{ flex: d.danger }} />}
-                {d.suspicious > 0 && <i className="suspicious" style={{ flex: d.suspicious }} />}
-              </div>
-              <span className="dtip" aria-hidden="true"><b>{d.label}</b><span>위험 {d.danger}건</span><span>의심 {d.suspicious}건</span></span>
-              {showX && <span className={`dx${i === data.length - 1 ? ' today' : ''}`} aria-hidden="true">{d.short}</span>}
-            </div>
-          )
-        })}
-      </div>
+    <div className="chart-tip">
+      <b>{d.label}</b>
+      {SERIES.map(([k, name, color]) => <div key={k}><i style={{ background: color }} />{name}<span>{d[k]}건</span></div>)}
+    </div>
+  )
+}
+
+// 일별 위험·의심 누적 영역 (shadcn Area Chart - Stacked 형태). 표 대신 읽을 수 있게 aria-label 에 합계를 둠
+function DailyChart({ data }) {
+  const id = useId().replace(/:/g, '')
+  const total = (k) => data.reduce((n, d) => n + d[k], 0)
+  return (
+    <div className="area-chart" role="img" aria-label={`일별 탐지: 위험 ${total('danger')}건, 의심 ${total('suspicious')}건`}>
+      <ResponsiveContainer width="100%" height="100%">
+        <AreaChart data={data} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
+          <defs>
+            {SERIES.map(([k, , color]) => (
+              <linearGradient key={k} id={`${id}-${k}`} x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor={color} stopOpacity={0.8} />
+                <stop offset="95%" stopColor={color} stopOpacity={0.1} />
+              </linearGradient>
+            ))}
+          </defs>
+          <CartesianGrid vertical={false} />
+          <XAxis dataKey="short" tickLine={false} axisLine={false} tickMargin={8} minTickGap={24} />
+          <YAxis allowDecimals={false} tickLine={false} axisLine={false} width={24} />
+          <Tooltip content={<ChartTip />} cursor={{ strokeDasharray: '3 3' }} />
+          {[...SERIES].reverse().map(([k, , color]) => (
+            <Area key={k} dataKey={k} type="monotone" stackId="a" stroke={color} strokeWidth={2} fill={`url(#${id}-${k})`} isAnimationActive={false} />
+          ))}
+        </AreaChart>
+      </ResponsiveContainer>
+    </div>
+  )
+}
+
+// 강조 카드 안 작은 추이선 (흰색 60%). 장식이라 스크린리더에서 숨김
+function Sparkline({ data }) {
+  const points = data.map((d) => ({ n: d.danger + d.suspicious }))
+  return (
+    <div className="feature-spark" aria-hidden="true">
+      <ResponsiveContainer width="100%" height="100%">
+        <AreaChart data={points} margin={{ top: 2, right: 0, left: 0, bottom: 2 }}>
+          <Area dataKey="n" type="monotone" stroke="#fff" strokeWidth={2} fill="#fff" fillOpacity={0.15} isAnimationActive={false} />
+        </AreaChart>
+      </ResponsiveContainer>
     </div>
   )
 }

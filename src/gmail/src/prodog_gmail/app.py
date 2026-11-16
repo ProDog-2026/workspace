@@ -21,7 +21,7 @@ from .dynamic_api import install_dynamic_routes
 from .errors import ConnectorError
 from .google import GoogleClient
 from .mail import mail_metadata, parse_gmail_message
-from .scan import load_detector, scan_mail
+from .scan import load_detector, model_key, scan_mail
 from .store import Store
 from .supabase import Supabase
 
@@ -297,14 +297,26 @@ def create_app(settings: Settings | None = None, transport=None, dynamic_transpo
             ids = [m["id"] for m in result.get("messages", [])][:limit]
             next_token, estimate = result.get("nextPageToken"), result.get("resultSizeEstimate", 0)
         semaphore = asyncio.Semaphore(4)
+        store, detector = application.state.store, application.state.detector
+        key = model_key(detector)
+        # Gmail messages never change under the same ID, so a mail already scanned by this
+        # detector skips the body fetch and the model. Only new mails cost a Gmail read.
+        saved = store.cached_scans(current["account_id"], ids, key)
 
         async def fetch(message_id):
+            if message_id in saved:
+                hit = saved[message_id]
+                dynamic = latest_dynamic(current["account_id"], message_id, hit.get("body_hash"))
+                return {**hit, "dynamic": dynamic}
             async with semaphore:
                 try:
                     parsed = await get_mail(current, message_id)
+                    detection = scan_mail(detector, parsed)
+                    if detection is None or detection["status"] == "ok":  # Never cache failures.
+                        store.save_scan(current["account_id"], message_id, key, detection)
                     return {
                         **mail_metadata(parsed),
-                        "detection": scan_mail(application.state.detector, parsed),
+                        "detection": detection,
                         "dynamic": latest_dynamic(
                             current["account_id"], message_id, parsed["body_hash"]
                         ),

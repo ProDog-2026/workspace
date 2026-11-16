@@ -58,5 +58,21 @@ export const toRow = (m) => {
     static_score: scanned ? d.static_score : null, llm_score: null,
     final_score: scanned ? d.static_score : null, verdict: scanned ? d.verdict : null,
     types: [], evidence: [], llm_reason: null,
+    // 판정 근거 표시용. 소수 한 자리라 기준(5%) 바로 아래 값이 반올림돼 "5% · 5% 미만"으로 보이지 않음
+    static_pct: scanned && d.probability != null ? Math.round(d.probability * 1000) / 10 : null,
+    thresholds: scanned ? d.thresholds ?? null : null,
   }
+}
+
+// "정적 8% · 의심 기준 5% 이상 …" 한 줄. 판정은 다시 계산하지 않고 이미 나온 verdict 를 설명만 함
+export function scoreReason(r) {
+  const t = r.thresholds
+  if (!t || r.static_pct == null || !r.verdict) return null
+  const base = `정적 ${r.static_pct}% · ` + {
+    danger: `위험 기준 ${t.danger}% 이상이라 위험이에요.`,
+    suspicious: `의심 기준 ${t.suspicious}% 이상, 위험 기준 ${t.danger}% 미만이라 의심이에요.`,
+    safe: `의심 기준 ${t.suspicious}% 미만이라 정상이에요.`,
+  }[r.verdict]
+  return r.dynamic?.observation === 'not_observed' && r.verdict !== 'safe'
+    ? `${base} 동적 검사 미관찰은 이 판정을 바꾸지 않아요.` : base
 }

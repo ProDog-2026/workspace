@@ -41,3 +41,15 @@ test('inbox updates during submission do not drop later mails or duplicate the f
   assert.deepEqual(calls, ['a', 'b', 'c'])
   assert.deepEqual(delivered, ['a', 'b', 'c'])
 })
+
+test('score reason explains the verdict with the model thresholds', async () => {
+  const { scoreReason } = await import('../src/api.js')
+  const base = { id: 'm', body_hash: 'h', warnings: [], attachments: [] }
+  const row = (verdict, probability, dynamic) => toRow({ ...base, dynamic,
+    detection: { status: 'ok', verdict, probability, static_score: Math.round(probability * 100), thresholds: { suspicious: 5, danger: 41.4 } } })
+  assert.equal(scoreReason(row('suspicious', 0.08)), '정적 8% · 의심 기준 5% 이상, 위험 기준 41.4% 미만이라 의심이에요.')
+  assert.equal(scoreReason(row('danger', 0.9)), '정적 90% · 위험 기준 41.4% 이상이라 위험이에요.')
+  assert.equal(scoreReason(row('safe', 0.046)), '정적 4.6% · 의심 기준 5% 미만이라 정상이에요.')
+  assert.match(scoreReason(row('suspicious', 0.08, { status: 'completed', observation: 'not_observed' })), /동적 검사 미관찰은 이 판정을 바꾸지 않아요/)
+  assert.equal(scoreReason(toRow({ ...base, detection: null })), null)
+})
