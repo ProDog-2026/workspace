@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { dynamicLabel, isActive, eligible } from '../src/dynamicState.js'
+import { dynamicLabel, dynamicStatus, isActive, eligible } from '../src/dynamicState.js'
 import { toRow } from '../src/api.js'
 import { createInboxDispatcher } from '../src/inboxDispatcher.js'
 
@@ -40,6 +40,29 @@ test('inbox updates during submission do not drop later mails or duplicate the f
   await queue.finished()
   assert.deepEqual(calls, ['a', 'b', 'c'])
   assert.deepEqual(delivered, ['a', 'b', 'c'])
+})
+
+test('mail detail separates not run, running, failed and never reads as safe', () => {
+  const row = (verdict, dynamic = null) => ({ verdict, pending: false, status: 'ok', dynamic })
+  assert.equal(dynamicStatus(row('safe')).phase, 'none')
+  assert.match(dynamicStatus(row('safe')).note, /대상이 아니에요/)
+  assert.match(dynamicStatus(row('danger')).note, /아직 실행하지 않았어요/)
+  assert.match(dynamicStatus({ ...row('danger'), status: 'failed' }).note, /1차 검사 결과가 없어/)
+  assert.equal(dynamicStatus(row('danger', { status: 'running' })).phase, 'active')
+  assert.equal(dynamicStatus(row('danger', { status: 'unreachable' })).phase, 'active')
+  for (const status of ['failed', 'stopped', 'unavailable', 'not_configured', 'mystery']) {
+    const s = dynamicStatus(row('danger', { status }))
+    assert.equal(s.phase, 'failed')
+    assert.match(s.note, /안전하다는 뜻은 아니에요/)
+  }
+  assert.equal(dynamicStatus(row('danger', { status: 'incomplete', observation: 'unknown' })).phase, 'incomplete')
+  const clean = dynamicStatus(row('suspicious', { status: 'completed', observation: 'not_observed' }))
+  assert.equal(clean.phase, 'done')
+  assert.match(clean.note, /보장은 아니에요/)
+  const seen = dynamicStatus(row('danger', { status: 'completed', observation: 'observed' }))
+  assert.equal(seen.phase, 'done')
+  assert.match(seen.note, /요약 외 도구 요청 또는 테스트 환경의 효과/)
+  assert.doesNotMatch(seen.note, /지시를 따라/)
 })
 
 test('score reason explains the verdict with the model thresholds', async () => {

@@ -47,6 +47,7 @@ export const toRow = (m) => {
     id: m.id,
     body_hash: m.body_hash,
     dynamic: m.dynamic ?? null,
+    attachments_count: m.attachments.length,
     gmail_message_id: m.id,
     sender: m.sender,
     subject: m.subject,
