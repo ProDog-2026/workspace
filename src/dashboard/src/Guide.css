@@ -1,0 +1,24 @@
+.guide { margin: 0; word-break: keep-all; overflow-wrap: anywhere; line-height: 1.75; }
+.guide-header { max-width: 48rem; margin-block-end: 3rem; }
+.guide-eyebrow { color: var(--muted); font-weight: 600; margin: 0 0 .75rem; }
+.guide-header h1 { font-size: clamp(1.8rem, 1.3rem + 2vw, 2.75rem); line-height: 1.35; letter-spacing: -.035em; margin: 0 0 1.25rem; }
+.guide p, .guide dd, .guide li { color: var(--ink-2); }
+.guide h2 { font-size: 1.3rem; margin: 0 0 1.25rem; }
+.guide h3 { color: var(--ink); font-size: 1.1rem; margin: 1rem 0 .6rem; }
+.guide a { color: var(--accent); text-decoration: underline; text-underline-offset: .25em; font-weight: 600; }
+.guide a:focus-visible { outline: 2px solid var(--accent); outline-offset: 5px; }
+.guide-steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr)); padding: 0; margin: 0 0 3rem; list-style: none; gap: 1rem; }
+.guide-steps li { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-box); padding: 1.5rem; display: flex; flex-direction: column; align-items: flex-start; }
+.guide-steps p { margin: 0 0 1.25rem; }
+.guide-steps a { margin-block-start: auto; }
+.guide-number { background: var(--brand); color: var(--on-brand); border-radius: var(--r-pill); width: 2.25rem; height: 2.25rem; display: grid; place-items: center; font-weight: 600; }
+.guide-reading { padding: 1.75rem 0; border-top: 1px solid var(--border); }
+.guide-reading p { max-width: 60rem; }
+.guide-reading dl { margin: 0; }
+.guide-reading dl div { display: grid; grid-template-columns: minmax(8rem, 1fr) 4fr; gap: 1.5rem; padding: .75rem 0; }
+.guide dt { font-weight: 600; }
+.guide dd { margin: 0; }
+.guide-limit { margin-block-start: 1rem; padding: 1.75rem; background: var(--brand-weak); border-radius: var(--r-box); }
+.guide-limit ul { padding-inline-start: 1.25rem; }
+.guide-limit li + li { margin-block-start: .5rem; }
+@media (max-width: 40rem) { .guide-reading dl div { grid-template-columns: 1fr; gap: .25rem; } .guide-limit { padding: 1.25rem; } }
