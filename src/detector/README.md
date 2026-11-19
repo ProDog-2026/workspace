@@ -192,6 +192,33 @@ python scripts/evaluate_dataset.py `
 [`../../docs/dataset/issue-35-external-evaluation.md`](../../docs/dataset/issue-35-external-evaluation.md)에
 기록한다.
 
+## 한국어 모델 학습
+
+한국어 경로의 두 모델은 짝 구성 코퍼스로 학습한다. 같은 운반 메일이 `정상`과 `인젝션` 양쪽에
+모두 등장해서 운반 텍스트가 라벨 단서로 쓰이지 못한다. 이전 코퍼스는 운반 메일 하나당 라벨이
+하나뿐이라 모델이 공격 문구 대신 운반 메일을 외웠다(이슈 #84). 배경과 한계는
+[`../../docs/dataset/korean-paired-corpus.md`](../../docs/dataset/korean-paired-corpus.md)에 있다.
+
+```powershell
+python scripts/build_korean_paired_corpus.py
+python scripts/train_korean_detector.py --model tfidf `
+  --cleaned ../../docs/dataset/kopi-email-paired.jsonl --conflicts NONE
+python scripts/train_korean_detector.py --model transformer `
+  --cleaned ../../docs/dataset/kopi-email-paired.jsonl --conflicts NONE
+```
+
+은닉 기법 3종 홀드아웃은 **보고 전용**이다. 학습에도 임계값 조정에도 쓰지 않는다.
+
+```powershell
+python scripts/evaluate_korean_holdout.py `
+  "../../../KoPI-Bench_메일_PDF_개별JSON_공격기법" `
+  --output reports/korean-holdout-hidden3-metrics.json
+```
+
+이 평가는 공격본과 대조군(숨긴 지시만 제거한 같은 메일)을 함께 재고 **순위 역전**을 본다.
+공격본 점수가 대조군보다 낮으면 임계값을 어떻게 잡아도 그 사례는 분리할 수 없기 때문에,
+탐지 건수보다 먼저 봐야 하는 지표다.
+
 BIPIA는 이전 모델 평가와 임계값 조정에 이미 사용했으므로 더 이상 독립 외부 테스트가 아니다.
 현재는 학습·검증·내부 테스트 데이터에 편입되어 있다. 이전 기준 모델의 BIPIA 결과는
 `reports/bipia-emailqa-metrics.json`에, LLMail 같은 출처 holdout 결과는
