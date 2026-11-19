@@ -252,6 +252,11 @@ def main() -> None:
         default=CONFLICTS,
         help="라벨 충돌 행을 제외한다. --conflicts NONE 이면 전부 사용",
     )
+    parser.add_argument(
+        "--dataset-label",
+        default="KoPI-Bench 이메일 정제본 (검수 전 후보)",
+        help="산출물에 기록할 학습 데이터 출처 표기",
+    )
     parser.add_argument("--base-model", default="klue/roberta-small")
     parser.add_argument("--epochs", type=int, default=3)
     parser.add_argument("--max-length", type=int, default=256)
@@ -287,7 +292,7 @@ def main() -> None:
             {
                 "format_version": 1,
                 "sklearn_version": sklearn.__version__,
-                "dataset": "KoPI-Bench 이메일 정제본 (검수 전 후보)",
+                "dataset": args.dataset_label,
                 "pipeline": pipeline,
                 "threshold": args.danger,
                 "suspicious_threshold": args.suspicious,
@@ -312,7 +317,7 @@ def main() -> None:
             json.dumps(
                 {
                     "format_version": 1,
-                    "dataset": "KoPI-Bench 이메일 정제본 (검수 전 후보)",
+                    "dataset": args.dataset_label,
                     "base_model": args.base_model,
                     "window_chars": WINDOW_CHARS,
                     "window_overlap": WINDOW_OVERLAP,
