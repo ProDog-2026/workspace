@@ -29,9 +29,6 @@ REPORTS = ROOT / "src/detector/reports"
 MODELS = ROOT / "src/detector/models"
 SPLITS = ("train", "validation", "test")
 SHARES = {"train": 0.70, "validation": 0.15, "test": 0.15}
-# KoPI 메일은 최대 696자라 창 분할이 필요 없다. 추론 코드와 같은 창 설정만 기록한다.
-WINDOW_CHARS = 1000
-WINDOW_OVERLAP = 500
 
 
 def load_rows(cleaned: Path, conflicts: Path | None) -> list[dict[str, str]]:
@@ -259,7 +256,9 @@ def main() -> None:
     )
     parser.add_argument("--base-model", default="klue/roberta-small")
     parser.add_argument("--epochs", type=int, default=3)
-    parser.add_argument("--max-length", type=int, default=256)
+    # 모델 상한(512)까지 쓴다. 256이면 학습 입력 17%가 잘리고, 그중 130행은
+    # 공격 문구까지 잘려 본문이 짝의 정상본과 같은데 라벨만 인젝션이 된다(#86).
+    parser.add_argument("--max-length", type=int, default=512)
     parser.add_argument("--seed", type=int, default=42)
     # 0.5/0.75는 임시 운영값이다. smoke에서 Transformer 점수 순위는 분리되지만
     # 이 임계값으로 공격 3건을 모두 놓친다. 배포 전 별도 데이터로 임계값을 검증해야 한다.
@@ -319,9 +318,8 @@ def main() -> None:
                     "format_version": 1,
                     "dataset": args.dataset_label,
                     "base_model": args.base_model,
-                    "window_chars": WINDOW_CHARS,
-                    "window_overlap": WINDOW_OVERLAP,
-                    "max_length": args.max_length,
+                    # 조각 상한은 추론 때 모델에서 읽는다. 여기 적으면 둘이 어긋난다(#86).
+                    "train_max_length": args.max_length,
                     "suspicious_threshold": suspicious,
                     "danger_threshold": float(max(danger, np.nextafter(suspicious, 1.0))),
                 },
