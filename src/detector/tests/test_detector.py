@@ -21,7 +21,12 @@ from prodog_sast.model import (
     save_artifact,
     train,
 )
-from prodog_sast.transformer import combine_predictions, text_windows
+from prodog_sast.transformer import (
+    WINDOW_OVERLAP_TOKENS,
+    combine_predictions,
+    predict_transformer,
+    window_limit,
+)
 
 
 class FixedProbabilityPipeline:
@@ -30,10 +35,86 @@ class FixedProbabilityPipeline:
         return np.array([[1 - value, value] for value in probabilities])
 
 
-def test_transformer_windows_cover_long_text_and_validate_overlap() -> None:
-    assert text_windows("abcdefghij", 6, 2) == ["abcdef", "efghij", "ij"]
-    with pytest.raises(ValueError):
-        text_windows("text", 4, 4)
+class FakeConfig:
+    def __init__(self, max_position_embeddings: int) -> None:
+        self.max_position_embeddings = max_position_embeddings
+
+
+def test_window_limit_takes_the_smaller_of_model_and_tokenizer_limits() -> None:
+    """상한은 모델에서 읽는다. RoBERTa의 514는 쓸 수 없고 토크나이저의 512가 실제 상한이다."""
+    roberta = type("M", (), {"config": FakeConfig(514)})()
+    bert = type("M", (), {"config": FakeConfig(512)})()
+    sentinel = type("T", (), {"model_max_length": 10**30})()
+
+    assert window_limit(roberta, type("T", (), {"model_max_length": 512})()) == 512
+    assert window_limit(bert, sentinel) == 512
+
+
+class ChunkingTokenizer:
+    """텍스트를 토큰 상한대로 조각내는 토크나이저 대역.
+
+    실제 HuggingFace 토크나이저처럼 overflow_to_sample_mapping 을 돌려준다.
+    여기서 검증하는 것은 조각 점수를 원래 텍스트로 되모으는 쪽이다.
+    """
+
+    model_max_length = 10**30
+    pad_token_id = 0
+
+    def __call__(self, texts, *, truncation, max_length, stride, return_overflowing_tokens):
+        assert truncation and return_overflowing_tokens
+        assert stride == WINDOW_OVERLAP_TOKENS
+        ids: list[list[int]] = []
+        owners: list[int] = []
+        for owner, text in enumerate(texts):
+            tokens = [ord(character) for character in text]
+            step = max(1, max_length - stride)
+            starts = range(0, max(1, len(tokens)), step)
+            for start in starts:
+                chunk = tokens[start : start + max_length]
+                ids.append(chunk)
+                owners.append(owner)
+        return {
+            "input_ids": ids,
+            "attention_mask": [[1] * len(chunk) for chunk in ids],
+            "overflow_to_sample_mapping": owners,
+        }
+
+
+def test_transformer_scores_every_chunk_and_keeps_the_highest_per_text() -> None:
+    """조각 점수가 원래 텍스트로 제대로 되모이는지 본다.
+
+    배치 경계를 넘어가는 조각이 남의 점수로 들어가면 긴 메일의 공격이 통째로
+    사라진다. 그래서 배치 크기를 조각 수보다 작게 잡고 확인한다.
+    """
+    torch = pytest.importorskip("torch")
+
+    # 'z' 가 들어간 조각만 1.0, 나머지는 0.0.
+    class FakeModel:
+        config = FakeConfig(8)
+
+        def __call__(self, *, input_ids, attention_mask):
+            scores = [[0.0, 1.0] if ord("z") in row.tolist() else [1.0, 0.0] for row in input_ids]
+            return type("O", (), {"logits": torch.log(torch.tensor(scores) + 1e-9)})()
+
+    artifact = {
+        "model": FakeModel(),
+        "tokenizer": ChunkingTokenizer(),
+        "device": torch.device("cpu"),
+        "config": {"suspicious_threshold": 0.5, "danger_threshold": 0.75},
+    }
+    # 상한 8, 겹침 64 -> step 1. 공격 문구 'z'는 마지막 글자이므로 글자 단위로
+    # 잘라 앞부분만 보는 구현에서는 놓친다.
+    texts = ["a" * 40 + "z", "a" * 40, "z"]
+
+    results = predict_transformer(artifact, texts, batch_size=4)
+
+    assert [result["verdict"] for result in results] == ["danger", "safe", "danger"]
+    assert results[0]["prompt_injection_probability"] == pytest.approx(1.0, abs=1e-6)
+    assert results[1]["prompt_injection_probability"] == pytest.approx(0.0, abs=1e-6)
+
+
+def test_transformer_handles_an_empty_input_list() -> None:
+    assert predict_transformer({"config": {}}, []) == []
 
 
 def test_combined_verdict_uses_the_more_severe_detector_result() -> None:
