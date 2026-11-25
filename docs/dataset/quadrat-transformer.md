@@ -27,13 +27,17 @@ Quadrat의 `clean`과 `injected`는 원래 학습/시험 분할이 아니라 서
 원본 데이터는 `src/detector/data/vendor/quadrat-ipi-v1.0.2/`, 학습 가중치는
 `src/detector/models/quadrat-transformer/`에 저장한다. 원본 데이터와 운영 가중치는 모두
 Git에서 제외한다. 운영 가중치는
-[Notion 모델 파일 페이지](https://app.notion.com/p/40714dd1c3c48153b351f8fd6c01855d)에서 내려받는다.
+[static-model 레포](https://github.com/ProDog-2026/static-model)에서 내려받는다. 운영 임계값은
+가중치 폴더의 `prodog_transformer.json`에 함께 들어 있으므로, 조각 방식이 바뀐 뒤에는 가중치만
+그대로 두고 코드만 갱신하면 안 된다. 폴더를 다시 받아야 한다.
 
 ## 모델과 입력 처리
 
 - 기반 모델: `prajjwal1/bert-tiny` (BERT 2층, hidden size 128)
 - 학습: CPU, 1 epoch, batch 32, learning rate `3e-5`
-- 입력 길이: 모델 상한인 512 token. 설정 파일에 적지 않고 추론 때
+- 학습 입력 길이: 256 token (`--max-length` 기본값). 배포 중인 가중치와 같은 값이다. 512
+  재학습은 측정해보고 기각했다(아래 "512 재학습을 채택하지 않은 이유")
+- 추론 조각 상한: 모델 상한인 512 token. 설정 파일에 적지 않고 추론 때
   `config.max_position_embeddings`에서 읽는다
 - 긴 메일: 토크나이저가 512 token 조각, 64 token 중첩으로 나눈다. 조각 중 최대 확률을 메일
   점수로 사용한다. 중첩 64는 한국어 코퍼스 공격 문구 136종의 최대 길이가 41 token이라
