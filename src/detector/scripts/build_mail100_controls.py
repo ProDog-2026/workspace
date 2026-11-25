@@ -27,7 +27,7 @@ from pypdf.generic import StreamObject
 
 CSV_NAME = "한국어_이메일_100개_공격정리.csv"
 HIDDEN_PDF_BLOCK = re.compile(rb"BT [^\n]*? 3 Tr [^\n]*?ET\n?")
-BODY_LINE = re.compile(rb"BT 1 0 0 1 45 (\d+) Tm /F3\+0 1[01] Tf [\d.]+ TL (\(.*?\)) Tj T\* ET")
+BODY_LINE = re.compile(rb"BT 1 0 0 1 45 (\d+) Tm /F3\+0 11 Tf [\d.]+ TL (\(.*?\)) Tj T\* ET")
 
 
 def pdf_bytes(src: Path, benign_hidden: bool) -> bytes:
