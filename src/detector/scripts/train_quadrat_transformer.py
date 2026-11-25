@@ -131,8 +131,10 @@ def main() -> int:
     parser.add_argument("--epochs", type=int, default=1)
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--learning-rate", type=float, default=3e-5)
-    # 모델 상한(512)까지 쓴다. 256이면 공격 학습 샘플 62%가 잘린다(#86).
-    parser.add_argument("--max-length", type=int, default=512)
+    # 배포 중인 가중치와 같은 256을 쓴다. 512로 재학습하면 ROC AUC가 0.995963에서
+    # 0.994408로, 검토 재현율이 97.5%에서 96.6%로 내려간다(#86). 절단이 원인이 아니라
+    # 학습 텍스트 구성이 원인이라는 뜻이다. 한국어는 반대로 512가 맞다.
+    parser.add_argument("--max-length", type=int, default=256)
     # 학습 샘플 하나를 만들 때 원문에서 떼올 글자 수. 추론 조각 나누기와 무관하다.
     parser.add_argument("--training-window-chars", type=int, default=1000)
     parser.add_argument("--max-train-per-label", type=int, default=0)
