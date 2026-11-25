@@ -6,11 +6,8 @@
     "host_type": "email"
   },
   "base_model": "prajjwal1/bert-tiny",
-  "window_chars": 1000,
-  "window_overlap": 500,
-  "max_length": 256,
-  "suspicious_threshold": 0.939322,
-  "danger_threshold": 0.942692,
+  "suspicious_threshold": 0.937523,
+  "danger_threshold": 0.941672,
   "device": "cpu",
   "seed": 42,
   "epochs": 1,
@@ -29,28 +26,30 @@
   "validation_review_gate": {
     "samples": 2000,
     "positives": 1000,
-    "true_positive": 987,
+    "true_positive": 975,
     "false_positive": 48,
     "true_negative": 952,
-    "false_negative": 13,
-    "precision": 0.9536231884057971,
-    "recall": 0.987,
-    "f1": 0.97002457002457,
+    "false_negative": 25,
+    "precision": 0.9530791788856305,
+    "recall": 0.975,
+    "f1": 0.9639149777558083,
     "false_positive_rate": 0.048,
-    "roc_auc": 0.997089
+    "roc_auc": 0.995963
   },
   "validation_danger_gate": {
     "samples": 2000,
     "positives": 1000,
-    "true_positive": 960,
+    "true_positive": 914,
     "false_positive": 2,
     "true_negative": 998,
-    "false_negative": 40,
-    "precision": 0.997920997920998,
-    "recall": 0.96,
-    "f1": 0.9785932721712538,
+    "false_negative": 86,
+    "precision": 0.9978165938864629,
+    "recall": 0.914,
+    "f1": 0.954070981210856,
     "false_positive_rate": 0.002,
-    "roc_auc": 0.997089
+    "roc_auc": 0.995963
   },
-  "note": "Quadrat populations were group-split by host_source and host_id; this is not an independent external test."
+  "note": "Quadrat populations were group-split by host_source and host_id; this is not an independent external test. 2026-11-20: 가중치는 그대로 두고 토큰 단위 조각(이슈 #86) 기준으로 임계값만 다시 골랐다. 512로 재학습도 해봤으나 ROC AUC 0.994408 / 재현율 96.6%로 오히려 낮아 채택하지 않았다.",
+  "train_max_length": 256,
+  "threshold_calibration": "2026-11-20 재보정 (이슈 #86 토큰 단위 조각 기준, 검증 2,000건)"
 }
