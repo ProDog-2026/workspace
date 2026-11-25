@@ -219,6 +219,17 @@ python scripts/evaluate_korean_holdout.py `
 공격본 점수가 대조군보다 낮으면 임계값을 어떻게 잡아도 그 사례는 분리할 수 없기 때문에,
 탐지 건수보다 먼저 봐야 하는 지표다.
 
+김서진이 만든 한국어 메일 100개(은닉 기법 3종 + PDF 첨부)도 같은 방식으로 잰다.
+결과와 해석은 [`../../docs/dataset/korean-mail100.md`](../../docs/dataset/korean-mail100.md)에 있다.
+
+```powershell
+python scripts/evaluate_korean_mail100.py "<한국어_메일_100개_PDF_CSV 폴더>" `
+  --output reports/korean-mail100-metrics.json
+```
+
+`--augment`를 주면 인사말·맺음말판과 HTML판을 더해 학습하고 산출물 이름에 `-aug`가 붙는다.
+기존 모델 파일은 덮어쓰지 않는다.
+
 BIPIA는 이전 모델 평가와 임계값 조정에 이미 사용했으므로 더 이상 독립 외부 테스트가 아니다.
 현재는 학습·검증·내부 테스트 데이터에 편입되어 있다. 이전 기준 모델의 BIPIA 결과는
 `reports/bipia-emailqa-metrics.json`에, LLMail 같은 출처 holdout 결과는

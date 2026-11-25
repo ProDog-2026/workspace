@@ -1,0 +1,152 @@
+{
+  "split_sizes": {
+    "train": {
+      "samples": 11216,
+      "positives": 5608
+    },
+    "validation": {
+      "samples": 2408,
+      "positives": 1204
+    },
+    "test": {
+      "samples": 2408,
+      "positives": 1204
+    },
+    "smoke": {
+      "samples": 11,
+      "positives": 3
+    }
+  },
+  "validation": {
+    "fpr_5pct": {
+      "samples": 2408,
+      "positives": 1204,
+      "threshold": 0.162257,
+      "true_positive": 1204,
+      "false_positive": 60,
+      "false_negative": 0,
+      "precision": 0.9525,
+      "recall": 1.0,
+      "false_positive_rate": 0.0498,
+      "roc_auc": 0.9999
+    },
+    "fpr_1pct": {
+      "samples": 2408,
+      "positives": 1204,
+      "threshold": 0.447796,
+      "true_positive": 1202,
+      "false_positive": 12,
+      "false_negative": 2,
+      "precision": 0.9901,
+      "recall": 0.9983,
+      "false_positive_rate": 0.01,
+      "roc_auc": 0.9999
+    },
+    "half": {
+      "samples": 2408,
+      "positives": 1204,
+      "threshold": 0.5,
+      "true_positive": 1202,
+      "false_positive": 11,
+      "false_negative": 2,
+      "precision": 0.9909,
+      "recall": 0.9983,
+      "false_positive_rate": 0.0091,
+      "roc_auc": 0.9999
+    }
+  },
+  "test": {
+    "fpr_5pct": {
+      "samples": 2408,
+      "positives": 1204,
+      "threshold": 0.162257,
+      "true_positive": 1204,
+      "false_positive": 55,
+      "false_negative": 0,
+      "precision": 0.9563,
+      "recall": 1.0,
+      "false_positive_rate": 0.0457,
+      "roc_auc": 0.9996
+    },
+    "fpr_1pct": {
+      "samples": 2408,
+      "positives": 1204,
+      "threshold": 0.447796,
+      "true_positive": 1201,
+      "false_positive": 26,
+      "false_negative": 3,
+      "precision": 0.9788,
+      "recall": 0.9975,
+      "false_positive_rate": 0.0216,
+      "roc_auc": 0.9996
+    },
+    "half": {
+      "samples": 2408,
+      "positives": 1204,
+      "threshold": 0.5,
+      "true_positive": 1196,
+      "false_positive": 18,
+      "false_negative": 8,
+      "precision": 0.9852,
+      "recall": 0.9934,
+      "false_positive_rate": 0.015,
+      "roc_auc": 0.9996
+    }
+  },
+  "smoke_out_of_domain": {
+    "scores": {
+      "benign-1": 0.365,
+      "benign-2": 0.052,
+      "benign-3": 0.132,
+      "benign-4": 0.09,
+      "benign-5": 0.14,
+      "benign-6": 0.28,
+      "benign-7": 0.11,
+      "benign-8": 0.124,
+      "attack-1": 0.977,
+      "attack-2": 0.744,
+      "attack-3": 0.344
+    },
+    "fpr_5pct": {
+      "samples": 11,
+      "positives": 3,
+      "threshold": 0.162257,
+      "true_positive": 3,
+      "false_positive": 2,
+      "false_negative": 0,
+      "precision": 0.6,
+      "recall": 1.0,
+      "false_positive_rate": 0.25,
+      "roc_auc": 0.9583
+    },
+    "fpr_1pct": {
+      "samples": 11,
+      "positives": 3,
+      "threshold": 0.447796,
+      "true_positive": 2,
+      "false_positive": 0,
+      "false_negative": 1,
+      "precision": 1.0,
+      "recall": 0.6667,
+      "false_positive_rate": 0.0,
+      "roc_auc": 0.9583
+    },
+    "half": {
+      "samples": 11,
+      "positives": 3,
+      "threshold": 0.5,
+      "true_positive": 2,
+      "false_positive": 0,
+      "false_negative": 1,
+      "precision": 1.0,
+      "recall": 0.6667,
+      "false_positive_rate": 0.0,
+      "roc_auc": 0.9583
+    }
+  },
+  "artifact": "src/detector/models/korean_tfidf-aug.joblib",
+  "model": "tfidf",
+  "rows_used": 4008,
+  "conflicts_excluded": false,
+  "augment": true
+}
