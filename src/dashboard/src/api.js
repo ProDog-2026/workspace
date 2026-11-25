@@ -39,15 +39,16 @@ export async function dynamic(path, { method = 'GET', body, signal } = {}) {
 export const toRow = (m) => {
   const d = m.detection
   const scanned = d?.status === 'ok'
+  const excluded = m.attachments.filter((attachment) => attachment.pdf_status !== 'parsed').length
   const missing = [
     ...m.warnings.filter((w) => w !== 'attachment_content_not_analyzed'), // 첨부는 아래 문장으로
-    ...(m.attachments.length ? [`첨부파일 ${m.attachments.length}개 (내용 검사 안 함)`] : []),
+    ...(excluded ? [`첨부파일 ${excluded}개 (내용 검사 안 함)`] : []),
   ]
   return {
     id: m.id,
     body_hash: m.body_hash,
     dynamic: m.dynamic ?? null,
-    attachments_count: m.attachments.length,
+    attachments: m.attachments,
     gmail_message_id: m.id,
     sender: m.sender,
     subject: m.subject,
@@ -62,6 +63,7 @@ export const toRow = (m) => {
     // 판정 근거 표시용. 소수 한 자리라 기준(5%) 바로 아래 값이 반올림돼 "5% · 5% 미만"으로 보이지 않음
     static_pct: scanned && d.probability != null ? Math.round(d.probability * 1000) / 10 : null,
     thresholds: scanned ? d.thresholds ?? null : null,
+    static_source: scanned ? d.source ?? null : null,
   }
 }
 
@@ -69,7 +71,8 @@ export const toRow = (m) => {
 export function scoreReason(r) {
   const t = r.thresholds
   if (!t || r.static_pct == null || !r.verdict) return null
-  const base = `정적 ${r.static_pct}% · ` + {
+  const source = r.static_source === 'pdf' ? 'PDF 정적' : '정적'
+  const base = `${source} ${r.static_pct}% · ` + {
     danger: `위험 기준 ${t.danger}% 이상이라 위험이에요.`,
     suspicious: `의심 기준 ${t.suspicious}% 이상, 위험 기준 ${t.danger}% 미만이라 의심이에요.`,
     safe: `의심 기준 ${t.suspicious}% 미만이라 정상이에요.`,

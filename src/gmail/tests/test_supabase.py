@@ -90,6 +90,8 @@ def post(client, path):
          "incomplete"),
         ({"body_hash": "h", "truncated": False, "warnings": [], "attachments": [{}]},
          "incomplete"),
+        ({"body_hash": "h", "truncated": False, "warnings": [],
+          "attachments": [{"pdf_status": "parsed"}]}, "complete"),
         ({"body_hash": "h", "truncated": False, "warnings": [], "attachments": []}, "complete"),
     ],
 )

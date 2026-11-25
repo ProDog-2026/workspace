@@ -45,6 +45,21 @@ def test_model_error_is_never_safe():
     assert result["verdict"] is None
 
 
+def test_pdf_can_supply_the_static_verdict_when_body_has_low_score():
+    class ContentScore:
+        def predict_proba(self, texts):
+            return np.array([
+                [0.8, 0.2] if "Synthetic PDF note" in text else [0.99, 0.01]
+                for text in texts
+            ])
+
+    detector = artifact() | {"pipeline": ContentScore()}
+    result = scan_mail(detector, MAIL | {"pdf_texts": ["Synthetic PDF note"]})
+    assert result["verdict"] == "suspicious"
+    assert result["static_score"] == 20
+    assert result["source"] == "pdf"
+
+
 @pytest.fixture
 def client(tmp_path):
     settings = Settings(

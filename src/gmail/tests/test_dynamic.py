@@ -5,9 +5,11 @@ import json
 import time
 
 import httpx
+import numpy as np
 import pytest
 from cryptography.fernet import Fernet
 from fastapi.testclient import TestClient
+from test_mail import mail_with_pdfs, pdf_bytes
 from test_scan import artifact
 
 from prodog_gmail.app import COOKIE, create_app
@@ -123,7 +125,7 @@ def setup(tmp_path):
         assert change(client, "/api/demo/connect").status_code == 200
         saved = change(client, "/api/dynamic/settings", OPTIONS, "PUT")
         assert saved.status_code == 200, saved.text
-        client.app.state.detector = artifact(probability=0.9)
+        client.app.state.detector = artifact(probability=0.2)
         yield client, service, config
 
 
@@ -191,11 +193,13 @@ def test_deployment_endpoint_requires_csrf_and_returns_progress(setup):
     assert change(client, "/api/dynamic/deployment").json()["stage"] == "building"
 
 
-@pytest.mark.parametrize("probability", [0.2, 0.9])
-def test_flagged_mail_is_submitted_once_and_preserves_static_result(setup, probability):
+@pytest.mark.parametrize(("probability", "verdict"), [(0.2, "suspicious"), (0.9, "danger")])
+def test_flagged_mail_is_submitted_once_and_preserves_static_result(setup, probability, verdict):
     client, service, config = setup
     client.app.state.detector = artifact(probability=probability)
-    mid = mail_id(client)
+    mail, other = client.get("/api/mails?limit=2").json()["messages"]
+    mid = mail["id"]
+    client.app.state.detector["pipeline"].error = RuntimeError("second inference unavailable")
     first = change(client, f"/api/dynamic/mail/{mid}")
     assert first.status_code == 202, first.text
     jid = first.json()["job"]["id"]
@@ -204,24 +208,117 @@ def test_flagged_mail_is_submitted_once_and_preserves_static_result(setup, proba
     job = wait_job(client, jid)
     assert job["status"] == "completed"
     assert job["observation"] == "not_observed"
-    assert job["static_detection"]["verdict"] == ("danger" if probability == 0.9 else "suspicious")
+    assert job["mail_id"] == mid
+    assert job["body_hash"] == mail["body_hash"]
+    assert job["static_detection"]["verdict"] == verdict
+    assert job["static_detection"] == mail["detection"]
     assert len(service.submitted) == 1
     assert service.submitted[0]["config"]["model"] == "test-model"
     assert "UNTRUSTED" in service.submitted[0]["email"]["body"]
     assert "SYNTHETIC_SUMMARY_NOT_IN_GMAIL_DB" not in config.database_path.read_bytes().decode(
         errors="ignore"
     )
-    row = client.get("/api/mails").json()["messages"][0]
+    row, other_row = client.get("/api/mails?limit=2").json()["messages"]
+    assert row["detection"] == mail["detection"]
     assert row["dynamic"]["id"] == jid
+    assert other_row["id"] == other["id"]
+    assert other_row["dynamic"] is None
+
+
+@pytest.mark.parametrize(("probability", "verdict"), [(0.2, "suspicious"), (0.9, "danger")])
+def test_explicit_start_works_without_automatic_handoff_and_reuses_job(setup, probability, verdict):
+    client, service, _ = setup
+    client.app.state.detector = artifact(probability=probability)
+    assert change(
+        client, "/api/dynamic/settings", OPTIONS | {"auto_submit": False}, "PUT"
+    ).status_code == 200
+    path = f"/api/dynamic/mail/{mail_id(client)}"
+    assert change(client, path).json()["reason"] == "automatic_disabled"
+    assert client.post(path + "?start=true").status_code == 403
+
+    response = change(client, path + "?start=true")
+    assert response.status_code == 202
+    job = wait_job(client, response.json()["job"]["id"])
+    assert job["static_detection"]["verdict"] == verdict
+    assert change(client, path + "?start=true").json()["job"]["id"] == job["id"]
+    assert len(service.submitted) == 1
+
+
+def test_pdf_text_is_classified_before_the_same_mail_enters_dynamic_queue(setup, monkeypatch):
+    client, service, config = setup
+    pdf_note = "Synthetic project agenda from PDF"
+    raw = mail_with_pdfs(pdf_bytes(pdf_note))
+    monkeypatch.setattr("prodog_gmail.app.demo_messages", lambda: [raw])
+
+    class AgendaScore:
+        def predict_proba(self, texts):
+            return np.array([[0.8, 0.2] if pdf_note in text else [0.9, 0.1] for text in texts])
+
+    client.app.state.detector = artifact() | {"pipeline": AgendaScore()}
+    with monkeypatch.context() as transient:
+        transient.setattr("prodog_gmail.mail.extract_pdf_text", lambda *_: ("limit", ""))
+        limited = client.get("/api/mails").json()["messages"][0]
+        assert limited["attachments"][0]["pdf_status"] == "limit"
+        assert limited["detection"]["static_score"] == 10
+    refresh = change(client, f"/api/dynamic/mail/{limited['id']}?start=true")
+    assert refresh.status_code == 409
+    assert refresh.json()["error"]["code"] == "static_result_changed"
+
+    response = client.get("/api/mails")
+    mail = response.json()["messages"][0]
+    assert mail["attachments"][0]["pdf_status"] == "parsed"
+    assert mail["detection"]["verdict"] == "suspicious"
+    assert mail["detection"]["source"] == "pdf"
+    assert pdf_note not in response.text
+    assert pdf_note not in client.get(f"/api/mails/{mail['id']}").text
+    assert service.submitted == []
+
+    response = change(client, f"/api/dynamic/mail/{mail['id']}?start=true")
+    assert response.status_code == 202, response.text
+    job = wait_job(client, response.json()["job"]["id"])
+    assert job["status"] == "completed"
+    assert job["static_detection"] == mail["detection"]
+    assert job["pdf_attachments_count"] == 1
+    assert pdf_note in service.submitted[0]["email"]["body"]
+    assert pdf_note.encode() not in config.database_path.read_bytes()
+    result = client.get("/api/mails").json()["messages"][0]
+    assert result["dynamic"]["id"] == job["id"]
+    assert result["detection"] == mail["detection"]
+
+    # A transient extraction failure cannot pair the cached verdict with different input.
+    monkeypatch.setattr("prodog_gmail.mail.extract_pdf_text", lambda *_: ("limit", ""))
+    retry = change(client, f"/api/dynamic/mail/{mail['id']}?retry=true")
+    assert retry.status_code == 409
+    assert retry.json()["error"]["code"] == "pdf_extraction_changed"
+    cached = client.get("/api/mails").json()["messages"][0]
+    assert cached["attachments"][0]["pdf_status"] == "parsed"
+    assert cached["detection"] == mail["detection"]
+    assert cached["dynamic"]["id"] == job["id"]
+
+
+def test_linked_result_remains_visible_after_a_standalone_experiment(setup):
+    client, _, _ = setup
+    mid = mail_id(client)
+    linked = change(client, f"/api/dynamic/mail/{mid}").json()["job"]
+    wait_job(client, linked["id"])
+    manual = change(client, f"/api/dynamic/manual-mail/{mid}").json()["job"]
+    wait_job(client, manual["id"])
+
+    row = client.get("/api/mails").json()["messages"][0]
+    assert row["dynamic"]["id"] == linked["id"]
+    assert row["dynamic"]["static_detection"] == row["detection"]
 
 
 @pytest.mark.parametrize("probability", [None, 0.01])
-def test_safe_or_unconfigured_model_does_not_enter_dynamic_queue(setup, probability):
+def test_safe_or_unconfigured_mail_stays_out_of_dynamic_queue(setup, probability):
     client, service, _ = setup
     client.app.state.detector = None if probability is None else artifact(probability=probability)
-    response = change(client, f"/api/dynamic/mail/{mail_id(client)}")
-    assert response.status_code == 200
-    assert response.json()["skipped"] is True
+    path = f"/api/dynamic/mail/{mail_id(client)}"
+    for suffix in ("", "?start=true", "?retry=true"):
+        response = change(client, path + suffix)
+        assert response.status_code == 200
+        assert response.json()["reason"] == ("static_not_ready" if probability is None
+                                             else "not_flagged")
     assert service.submitted == []
 
 
@@ -244,7 +341,27 @@ def test_timeout_is_incomplete_and_never_normal(setup):
     job = wait_job(client, jid, ("incomplete", "failed"))
     assert job["status"] == "incomplete"
     assert job["observation"] == "unknown"
-    assert job["static_detection"]["verdict"] == "danger"
+    assert job["static_detection"]["verdict"] == "suspicious"
+    row = client.get("/api/mails").json()["messages"][0]
+    assert row["detection"] == job["static_detection"]
+    assert row["dynamic"]["status"] == "incomplete"
+
+
+def test_new_static_model_failure_keeps_completed_dynamic_result(setup):
+    client, service, _ = setup
+    mid = mail_id(client)
+    path = f"/api/dynamic/mail/{mid}"
+    job = wait_job(client, change(client, path).json()["job"]["id"])
+    client.app.state.detector = artifact(error=RuntimeError("model unavailable")) | {
+        "created_at": "replacement-model",
+    }
+
+    assert change(client, path + "?start=true").json()["reason"] == "static_not_ready"
+    row = client.get("/api/mails").json()["messages"][0]
+    assert row["detection"]["status"] == "failed"
+    assert row["dynamic"]["id"] == job["id"]
+    assert row["dynamic"]["status"] == "completed"
+    assert len(service.submitted) == 1
 
 
 def test_csrf_and_local_endpoint_validation(setup):
@@ -269,6 +386,9 @@ def test_service_unavailable_returns_actionable_error_without_job(setup):
     assert response.status_code == 503
     assert response.json()["error"]["code"] == "dynamic_unavailable"
     assert service.submitted == []
+    row = client.get("/api/mails").json()["messages"][0]
+    assert row["detection"]["verdict"] == "suspicious"
+    assert row["dynamic"] is None
 
 
 def test_only_one_job_runs_until_previous_execution_finishes(setup):
@@ -312,7 +432,7 @@ def test_running_job_recovers_after_backend_restart_without_resubmission(tmp_pat
     ) as c:
         change(c, "/api/demo/connect")
         change(c, "/api/dynamic/settings", OPTIONS, "PUT")
-        c.app.state.detector = artifact(probability=0.9)
+        c.app.state.detector = artifact(probability=0.2)
         job = change(c, f"/api/dynamic/mail/{mail_id(c)}").json()["job"]
         wait_job(c, job["id"], ("running",))
         cookies = dict(c.cookies)
