@@ -10,9 +10,7 @@ only reflects the model. Run from the repository root:
 from __future__ import annotations
 
 import argparse
-import html
 import json
-import random
 import re
 from collections import Counter, defaultdict
 from pathlib import Path
@@ -51,65 +49,6 @@ def load_rows(cleaned: Path, conflicts: Path | None) -> list[dict[str, str]]:
         # 학습도 같은 표현을 써야 추론에서 점수가 밀리지 않는다.
         row["model_text"] = fields_to_model_text(body_text=row["mail_text"])
     return rows
-
-
-# KoPI 정상 메일은 "~되었습니다" 같은 거래 알림이라 "안녕하세요."·"확인해 주세요." 같은
-# 공손 표현이 공격본에만 몰려 있었다. 모델이 "하세요."를 공격 단서로 배워 인사말만 있는
-# 정상 메일을 오탐했다. 두 라벨에 같은 확률로 붙여 단서를 지운다.
-GREETINGS = ("안녕하세요.", "안녕하세요, 고객님.", "안녕하십니까.", "회원님, 안녕하세요.")
-CLOSINGS = (
-    # ponytail: mail100 평가셋의 맺음말 문장은 일부러 쓰지 않았다(평가 누수 방지).
-    "첨부 내용 참고 부탁드립니다.",
-    "궁금한 점은 고객센터로 연락 주세요.",
-    "감사합니다.",
-    "좋은 하루 보내세요.",
-    "확인 부탁드립니다.",
-)
-
-
-def with_polite_frame(row: dict[str, Any], rng: random.Random) -> dict[str, Any]:
-    text = f"{rng.choice(GREETINGS)}\n\n{row['mail_text']}\n\n{rng.choice(CLOSINGS)}"
-    return {
-        **row,
-        "mail_text": text,
-        "pair_origin": f"{row.get('pair_origin', '')}+공손틀",
-        "model_text": fields_to_model_text(body_text=text),
-    }
-
-
-# 학습 코퍼스에는 HTML이 전혀 없다. 실제 메일은 HTML 원문과 렌더링 텍스트가 함께 들어가므로
-# 같은 메일의 HTML판을 더한다. 숨김 요소는 정상본과 공격본에 같은 확률로 넣는다. 숨김 자체가
-# 라벨 단서가 되면 실제 뉴스레터의 preheader(display:none)·주석을 오탐한다.
-# ponytail: 고정 틀 5종. 평가셋(mail100)의 마크업 문자열과는 일부러 다르게 썼다.
-HIDDEN_WRAPPERS = (
-    '<div style="display:none;max-height:0;overflow:hidden">{}</div>',
-    "<!--{}-->",
-    '<span style="color:#ffffff;background:#ffffff">{}</span>',
-    '<p style="font-size:0;line-height:0">{}</p>',
-    '<div style="opacity:0;height:0">{}</div>',
-)
-
-
-def to_html_row(row: dict[str, Any], rng: random.Random) -> dict[str, Any]:
-    text = row["mail_text"]
-    phrase = row.get("suspected_attack_phrase") or ""
-    hidden = ""
-    if rng.random() < 0.5:
-        if row["label"] == 1 and phrase and phrase in text:
-            text, hidden = text.replace(phrase, "", 1), phrase
-        elif row["label"] == 0:
-            hidden = text.strip().splitlines()[0][:80]  # 흔한 preheader: 본문 첫 줄 반복
-    lines = [line for line in text.splitlines() if line.strip()]
-    paragraphs = "".join(f"<p>{html.escape(line)}</p>" for line in lines)
-    if hidden:
-        wrapper = rng.choice(HIDDEN_WRAPPERS).format(html.escape(hidden))
-        paragraphs = wrapper + paragraphs if rng.random() < 0.5 else paragraphs + wrapper
-    body = f'<!doctype html><html lang="ko"><body>{paragraphs}</body></html>'
-    return {
-        **row,
-        "pair_origin": f"{row.get('pair_origin', '')}+HTML",
-        "model_text": fields_to_model_text(body_text=row["mail_text"], body_html=body),
-    }
 
 
 def template_key(row: dict[str, str]) -> str:
@@ -326,24 +265,11 @@ def main() -> None:
     # 이 임계값으로 공격 3건을 모두 놓친다. 배포 전 별도 데이터로 임계값을 검증해야 한다.
     parser.add_argument("--suspicious", type=float, default=0.5)
     parser.add_argument("--danger", type=float, default=0.75)
-    # 두 증강은 함께 써야 효과가 있다. 하나만 쓰면 mail100 대조군 오탐률이 그대로 100%였다.
-    parser.add_argument(
-        "--augment",
-        action="store_true",
-        help="분할 뒤 인사말·맺음말판과 HTML판을 같은 분할에 더한다. 산출물 이름에 -aug",
-    )
     args = parser.parse_args()
 
     conflicts = None if str(args.conflicts) == "NONE" else args.conflicts
     rows = load_rows(args.cleaned, conflicts)
     data = split_rows(rows)
-    suffix = "-aug" if args.augment else ""
-    if args.augment:
-        # 분할 뒤에 더하므로 원본과 증강판은 항상 같은 분할에 있다.
-        rng = random.Random(args.seed)
-        for name in SPLITS:
-            data[name] = data[name] + [with_polite_frame(row, rng) for row in data[name]]
-            data[name] = data[name] + [to_html_row(row, rng) for row in data[name]]
     if SMOKE.is_file():
         data["smoke"] = [
             json.loads(line) for line in SMOKE.read_text(encoding="utf-8").splitlines() if line
@@ -375,14 +301,14 @@ def main() -> None:
                 "max_operational_suspicious_threshold": 1.0,
                 "report": report,
             },
-            MODELS / f"korean_tfidf{suffix}.joblib",
+            MODELS / "korean_tfidf.joblib",
         )
-        report["artifact"] = f"src/detector/models/korean_tfidf{suffix}.joblib"
+        report["artifact"] = "src/detector/models/korean_tfidf.joblib"
     else:
         (model, tokenizer), report = train_transformer(
             data, args.seed, args.base_model, args.epochs, args.max_length
         )
-        out = MODELS / f"korean-transformer{suffix}"
+        out = MODELS / "korean-transformer"
         out.mkdir(parents=True, exist_ok=True)
         model.save_pretrained(out)
         tokenizer.save_pretrained(out)
@@ -405,14 +331,13 @@ def main() -> None:
             + "\n",
             encoding="utf-8",
         )
-        report["artifact"] = f"src/detector/models/korean-transformer{suffix}"
+        report["artifact"] = "src/detector/models/korean-transformer"
 
     report["model"] = args.model
     report["rows_used"] = len(rows)
     report["conflicts_excluded"] = conflicts is not None
     REPORTS.mkdir(parents=True, exist_ok=True)
-    report["augment"] = args.augment
-    path = REPORTS / f"korean-{args.model}{suffix}-metrics.json"
+    path = REPORTS / f"korean-{args.model}-metrics.json"
     path.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(report["test"], ensure_ascii=False, indent=2))
     print(f"report -> {path.relative_to(ROOT)}")

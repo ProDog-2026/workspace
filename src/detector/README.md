@@ -227,8 +227,7 @@ python scripts/evaluate_korean_mail100.py "<한국어_메일_100개_PDF_CSV 폴�
   --output reports/korean-mail100-metrics.json
 ```
 
-`--augment`를 주면 인사말·맺음말판과 HTML판을 더해 학습하고 산출물 이름에 `-aug`가 붙는다.
-기존 모델 파일은 덮어쓰지 않는다.
+정상 짝 메일 200개는 `scripts/build_mail100_controls.py <공격 데이터 폴더> <출력 폴더>`로 만든다(pypdf 필요).
 
 BIPIA는 이전 모델 평가와 임계값 조정에 이미 사용했으므로 더 이상 독립 외부 테스트가 아니다.
 현재는 학습·검증·내부 테스트 데이터에 편입되어 있다. 이전 기준 모델의 BIPIA 결과는
