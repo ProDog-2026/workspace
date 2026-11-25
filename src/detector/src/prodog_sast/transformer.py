@@ -10,13 +10,20 @@ DEFAULT_MODEL_PATH = "models/quadrat-transformer"
 VERDICT_RANK = {"safe": 0, "suspicious": 1, "danger": 2}
 
 
-def text_windows(text: str, size: int, overlap: int) -> list[str]:
-    if size <= 0 or not 0 <= overlap < size:
-        raise ValueError("window size and overlap must satisfy size > overlap >= 0")
-    if not text:
-        return [""]
-    step = size - overlap
-    return [text[start : start + size] for start in range(0, len(text), step)]
+# 조각이 겹치는 토큰 수. 한국어 코퍼스 공격 문구 136종의 최대 길이가 41토큰이라
+# 문구가 조각 경계에 걸려도 다음 조각에는 온전히 들어간다.
+WINDOW_OVERLAP_TOKENS = 64
+
+
+def window_limit(model: Any, tokenizer: Any) -> int:
+    """조각 하나에 넣을 최대 토큰 수.
+
+    설정 파일에 적지 않는다. 상한은 모델의 위치 임베딩 개수가 정하고, 그 값을
+    글자 수 같은 다른 단위로 한 번 더 적어두면 둘이 어긋난다(이슈 #86).
+    RoBERTa는 max_position_embeddings 가 514지만 앞 2칸을 padding_idx 로 쓰므로
+    실제로 쓸 수 있는 길이는 토크나이저가 들고 있는 512다.
+    """
+    return min(int(model.config.max_position_embeddings), int(tokenizer.model_max_length))
 
 
 def load_transformer(path: str | Path) -> dict[str, Any]:
@@ -53,30 +60,43 @@ def predict_transformer(
 ) -> list[dict[str, Any]]:
     import torch
 
+    # 토크나이저는 빈 리스트에 IndexError 를 낸다. 지우지 말 것.
+    if not texts:
+        return []
+
     config = artifact["config"]
-    size = int(config["window_chars"])
-    overlap = int(config["window_overlap"])
     suspicious = float(config["suspicious_threshold"])
     danger = float(config["danger_threshold"])
-    flattened: list[str] = []
-    owners: list[int] = []
-    for owner, text in enumerate(texts):
-        windows = text_windows(text, size, overlap)
-        flattened.extend(windows)
-        owners.extend([owner] * len(windows))
-
     scores = [0.0] * len(texts)
+
+    # 조각 나누기는 토크나이저가 한다. 글자 수로 잘라 넘기면 토큰 상한과 어긋나
+    # 조각 뒷부분이 조용히 버려진다(이슈 #86).
+    tokenizer = artifact["tokenizer"]
+    encoded = tokenizer(
+        list(texts),
+        truncation=True,
+        max_length=window_limit(artifact["model"], tokenizer),
+        stride=WINDOW_OVERLAP_TOKENS,
+        return_overflowing_tokens=True,
+    )
+    owners = encoded["overflow_to_sample_mapping"]
+    chunks = encoded["input_ids"]
+    pad_id = int(tokenizer.pad_token_id or 0)
+
     with torch.inference_mode():
-        for start in range(0, len(flattened), batch_size):
-            encoded = artifact["tokenizer"](
-                flattened[start : start + batch_size],
-                padding=True,
-                truncation=True,
-                max_length=int(config["max_length"]),
-                return_tensors="pt",
-            )
-            encoded = {key: value.to(artifact["device"]) for key, value in encoded.items()}
-            probabilities = torch.softmax(artifact["model"](**encoded).logits, dim=-1)[:, 1]
+        for start in range(0, len(chunks), batch_size):
+            batch = chunks[start : start + batch_size]
+            width = max(len(ids) for ids in batch)
+            encoded_batch = {
+                "input_ids": torch.tensor([ids + [pad_id] * (width - len(ids)) for ids in batch]),
+                "attention_mask": torch.tensor(
+                    [[1] * len(ids) + [0] * (width - len(ids)) for ids in batch]
+                ),
+            }
+            encoded_batch = {
+                key: value.to(artifact["device"]) for key, value in encoded_batch.items()
+            }
+            probabilities = torch.softmax(artifact["model"](**encoded_batch).logits, dim=-1)[:, 1]
             for owner, probability in zip(
                 owners[start : start + batch_size], probabilities.tolist(), strict=True
             ):

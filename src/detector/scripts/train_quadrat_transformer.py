@@ -131,17 +131,18 @@ def main() -> int:
     parser.add_argument("--epochs", type=int, default=1)
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--learning-rate", type=float, default=3e-5)
+    # 배포 중인 가중치와 같은 256을 쓴다. 512로 재학습하면 ROC AUC가 0.995963에서
+    # 0.994408로, 검토 재현율이 97.5%에서 96.6%로 내려간다(#86). 절단이 원인이 아니라
+    # 학습 텍스트 구성이 원인이라는 뜻이다. 한국어는 반대로 512가 맞다.
     parser.add_argument("--max-length", type=int, default=256)
-    parser.add_argument("--window-chars", type=int, default=1000)
-    parser.add_argument("--window-overlap", type=int, default=500)
+    # 학습 샘플 하나를 만들 때 원문에서 떼올 글자 수. 추론 조각 나누기와 무관하다.
+    parser.add_argument("--training-window-chars", type=int, default=1000)
     parser.add_argument("--max-train-per-label", type=int, default=0)
     parser.add_argument("--max-validation-per-label", type=int, default=1000)
     parser.add_argument("--max-suspicious-fpr", type=float, default=0.05)
     parser.add_argument("--max-danger-fpr", type=float, default=0.002)
     parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
-    if not 0 <= args.window_overlap < args.window_chars:
-        raise ValueError("window overlap must be smaller than window size")
 
     import torch
     from transformers import AutoModelForSequenceClassification, AutoTokenizer
@@ -186,7 +187,7 @@ def main() -> int:
     model.to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.learning_rate)
     examples = [
-        (_training_text(row, args.window_chars), row["numeric_label"])
+        (_training_text(row, args.training_window_chars), row["numeric_label"])
         for row in train_rows
     ]
     losses: list[float] = []
@@ -211,13 +212,8 @@ def main() -> int:
             losses.append(float(output.loss.detach().cpu()))
 
     model.eval()
-    scoring_config = {
-        "window_chars": args.window_chars,
-        "window_overlap": args.window_overlap,
-        "max_length": args.max_length,
-        "suspicious_threshold": 0.5,
-        "danger_threshold": 0.9,
-    }
+    # 임계값 재측정용 임시값. 아래 _threshold 가 실제 운영값을 고른다.
+    scoring_config = {"suspicious_threshold": 0.5, "danger_threshold": 0.9}
     validation_texts = [
         fields_to_model_text(
             subject=str(row.get("subject") or ""), body_text=str(row["text"])
@@ -248,9 +244,9 @@ def main() -> int:
         "dataset_url": "https://huggingface.co/datasets/mihailgribov/quadrat-ipi",
         "filter": {"host_type": "email"},
         "base_model": args.base_model,
-        "window_chars": args.window_chars,
-        "window_overlap": args.window_overlap,
-        "max_length": args.max_length,
+        # 조각 상한은 추론 때 모델에서 읽는다. 여기 적으면 둘이 어긋난다(#86).
+        "train_max_length": args.max_length,
+        "training_window_chars": args.training_window_chars,
         "suspicious_threshold": suspicious,
         "danger_threshold": danger,
     }
