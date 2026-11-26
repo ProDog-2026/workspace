@@ -45,7 +45,7 @@ export default function Guide() {
 
     <aside className="guide-limit" aria-labelledby="guide-limits">
       <h2 id="guide-limits">사용 전에 알아두세요</h2>
-      <ul><li>Gmail 읽기 권한으로 메일을 가져와요. 메일을 자동으로 삭제하거나 차단하지 않아요.</li><li>PDF 첨부파일에서 추출한 텍스트를 검사해요. 다른 형식의 첨부파일은 검사에서 제외해요.</li><li>설정 화면의 자동 검사·알림·보관 기간 등은 데모 항목으로 저장되지 않아요. 동적 검사 설정은 동적 검사 페이지에서 관리해요.</li><li>계정 연결 해제는 설정의 연동 해제에서 할 수 있어요.</li></ul>
+      <ul><li>Gmail 읽기 권한으로 메일을 가져와요. 메일을 자동으로 삭제하거나 차단하지 않아요.</li><li>PDF 첨부파일에서 추출한 텍스트의 검사 결과는 메일 본문 판정과 따로 표시해요. 다른 형식의 첨부파일은 검사에서 제외해요.</li><li>설정 화면의 자동 검사·알림·보관 기간 등은 데모 항목으로 저장되지 않아요. 동적 검사 설정은 동적 검사 페이지에서 관리해요.</li><li>계정 연결 해제는 설정의 연동 해제에서 할 수 있어요.</li></ul>
       <a href="#/settings">연결 관리 열기 <span aria-hidden="true">→</span></a>
     </aside>
   </article>

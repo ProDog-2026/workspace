@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { canStartDynamic, dynamicLabel, dynamicStatus, isActive, mergeDynamicJob } from '../src/dynamicState.js'
-import { toRow } from '../src/api.js'
+import { pdfResultLabel, toRow } from '../src/api.js'
 import { createInboxDispatcher } from '../src/inboxDispatcher.js'
 
 test('negative dynamic observation does not erase a dangerous static verdict', () => {
@@ -51,6 +51,23 @@ test('only excluded attachments make the static result incomplete', async () => 
   assert.equal(partial.verdict, 'suspicious')
   assert.deepEqual(partial.missing_parts, ['첨부파일 2개 (내용 검사 안 함)'])
 })
+
+test('PDF results are shown separately for the matching attachment', () => {
+  const results = [
+    { attachment_index: 1, status: 'ok', verdict: 'danger', static_score: 80 },
+    { attachment_index: 2, status: 'failed' },
+  ]
+  const row = toRow({ id: 'mail', body_hash: 'hash', warnings: [],
+    attachments: [{ filename: 'notes.zip' }, { filename: 'one.pdf', pdf_status: 'parsed' }, { filename: 'two.pdf', pdf_status: 'parsed' }],
+    detection: { status: 'ok', verdict: 'safe', static_score: 2, pdf_results: results } })
+  assert.equal(row.verdict, 'safe')
+  assert.deepEqual(row.pdf_results, results)
+  assert.equal(row.status, 'incomplete')
+  assert.ok(row.missing_parts.includes('PDF 1개 (정적 검사 실패)'))
+  assert.equal(pdfResultLabel(row.pdf_results, 1), 'PDF 정적 검사 · 위험 · 80점')
+  assert.equal(pdfResultLabel(row.pdf_results, 2), 'PDF 정적 검사 실패')
+  assert.equal(pdfResultLabel(row.pdf_results, 0), 'PDF 정적 검사 결과 없음')
+})
 test('incomplete execution is not described as an all-clear', () => {
   assert.equal(dynamicLabel({ status: 'incomplete', observation: 'unknown' }), '검사 미완료')
   assert.equal(isActive({ status: 'unreachable' }), true)
@@ -86,7 +103,7 @@ test('inbox updates during submission do not drop later mails or duplicate the f
 test('mail detail separates not run, running, failed and never reads as safe', () => {
   const row = (verdict, dynamic = null) => ({ verdict, pending: false, status: 'ok', dynamic })
   assert.equal(dynamicStatus(row('safe')).phase, 'none')
-  assert.match(dynamicStatus(row('safe')).note, /정적 검사에서 판정이 끝났어요/)
+  assert.match(dynamicStatus(row('safe')).note, /본문 정적 검사에서 판정이 끝났어요/)
   assert.match(dynamicStatus(row('danger')).note, /아직 실행하지 않았어요/)
   assert.match(dynamicStatus(row('suspicious')).note, /아직 실행하지 않았어요/)
   assert.match(dynamicStatus({ ...row('danger'), status: 'failed' }).note, /1차 검사 결과가 없어/)

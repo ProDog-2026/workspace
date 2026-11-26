@@ -7,8 +7,7 @@ from typing import Any
 from prodog_sast.email_text import collect_api_to_model_text
 from prodog_sast.model import load_artifact, predict
 
-_INPUT_VERSION = "pdf-v1"
-_VERDICT_RANK = {"safe": 0, "suspicious": 1, "danger": 2}
+_INPUT_VERSION = "pdf-separate-v2"
 
 
 def load_detector(path: Path | None):
@@ -16,36 +15,59 @@ def load_detector(path: Path | None):
     return load_artifact(path) if path else None
 
 
+def _scan_text(artifact, text: str) -> dict[str, Any]:
+    try:
+        result = predict(artifact, [text])[0]
+        probability = result["prompt_injection_probability"]
+        return {
+            "status": "ok",
+            "verdict": result["verdict"],
+            "probability": probability,
+            "static_score": round(probability * 100),
+            "thresholds": {
+                "suspicious": round(result["suspicious_threshold"] * 100, 1),
+                "danger": round(result["danger_threshold"] * 100, 1),
+            },
+        }
+    except Exception:  # A model error is reported as a failure, never as safe.
+        return {"status": "failed", "verdict": None, "probability": None, "static_score": None}
+
+
 def scan_mail(artifact, mail: Mapping[str, Any]) -> dict[str, Any] | None:
-    """None = detector not configured. A failure never becomes `safe`."""
+    """Scan the mail body and parsed PDF attachments independently."""
     if artifact is None:
         return None
     try:
-        # Score each PDF independently so a long mail body cannot mask an attachment.
-        inputs = [collect_api_to_model_text(mail), *mail.get("pdf_texts", [])]
-        index, result = max(
-            enumerate(predict(artifact, inputs)),
-            key=lambda entry: (
-                _VERDICT_RANK[entry[1]["verdict"]],
-                entry[1]["prompt_injection_probability"],
-            ),
-        )
-    except Exception:  # any model error must surface as "failed", not crash the list
-        return {"status": "failed", "verdict": None, "probability": None, "static_score": None}
-    probability = result["prompt_injection_probability"]
-    return {
-        "status": "ok",
-        "verdict": result["verdict"],
-        "probability": probability,
-        # Display only; verdict is already fixed by the detector's own thresholds.
-        "static_score": round(probability * 100),
-        **({"source": "pdf"} if index else {}),
-        # Shown next to the score so the user can see why 8% is "suspicious".
-        "thresholds": {
-            "suspicious": round(result["suspicious_threshold"] * 100, 1),
-            "danger": round(result["danger_threshold"] * 100, 1),
-        },
-    }
+        body_text = collect_api_to_model_text(mail)
+    except Exception:
+        detection = {"status": "failed", "verdict": None, "probability": None, "static_score": None}
+    else:
+        detection = _scan_text(artifact, body_text)
+    parsed_indexes = [
+        index for index, attachment in enumerate(mail.get("attachments", []))
+        if attachment.get("pdf_status") == "parsed"
+    ]
+    pdf_texts = mail.get("pdf_texts", [])
+    if len(parsed_indexes) != len(pdf_texts):
+        detection["pdf_results"] = [
+            {"attachment_index": index, "status": "failed", "verdict": None,
+             "probability": None, "static_score": None}
+            for index in parsed_indexes
+        ]
+    else:
+        detection["pdf_results"] = [
+            {"attachment_index": index, **_scan_text(artifact, pdf_text)}
+            for index, pdf_text in zip(parsed_indexes, pdf_texts, strict=True)
+        ]
+    return detection
+
+
+def cacheable_detection(detection: dict[str, Any] | None) -> bool:
+    """Retry failed body or attachment scans on the next request."""
+    return detection is None or (
+        detection.get("status") == "ok"
+        and all(result.get("status") == "ok" for result in detection.get("pdf_results", []))
+    )
 
 
 def model_key(artifact) -> str:

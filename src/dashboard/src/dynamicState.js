@@ -31,7 +31,7 @@ export function dynamicStatus(row) {
     const runnable = canStartDynamic(row)
     const note = row.pending || row.status === 'failed' ? '1차 검사 결과가 없어 동적 검사를 시작하지 않았어요.'
       : runnable ? `아직 실행하지 않았어요. ${NOT_SAFE}`
-      : '정적 검사에서 판정이 끝났어요. 동적 검사는 의심·위험 메일에 실행해요.'
+      : '메일 본문 정적 검사에서 판정이 끝났어요. 동적 검사는 본문이 의심·위험인 메일에 실행해요.'
     return { phase: 'none', label: '실행 안 함', note, runnable }
   }
   const label = dynamicLabel(job)

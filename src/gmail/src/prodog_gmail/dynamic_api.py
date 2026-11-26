@@ -11,7 +11,7 @@ from .dynamic import ACTIVE
 from .dynamic_models import DynamicSettings, PromptInput, TestEmail, local_url
 from .errors import ConnectorError
 from .mail import mail_metadata
-from .scan import model_key, scan_mail
+from .scan import cacheable_detection, model_key, scan_mail
 
 
 def install_dynamic_routes(app, session, csrf, limit_requests, get_mail):
@@ -175,14 +175,27 @@ def install_dynamic_routes(app, session, csrf, limit_requests, get_mail):
         if detection is None:
             detection = scan_mail(detector, parsed)
             if detection and detection["status"] == "ok":
-                store.save_metadata(owner, mail_metadata(parsed))
-                store.save_scan(owner, message_id, key, detection)
+                cacheable = cacheable_detection(detection)
+                store.save_metadata(owner, mail_metadata(parsed), preserve_scan=not cacheable)
+                if cacheable:
+                    store.save_scan(owner, message_id, key, detection)
                 if coverage_changed and cached["detection"]:
-                    raise ConnectorError(
-                        "static_result_changed",
-                        "PDF 정적 검사 결과를 갱신했어요. 메일 목록을 새로고침해 주세요.",
-                        409,
-                    )
+                    body_fields = ("status", "verdict", "probability", "static_score", "thresholds")
+                    previous_body = {field: cached["detection"].get(field) for field in body_fields}
+                    current_body = {field: detection.get(field) for field in body_fields}
+                    if previous_body != current_body:
+                        if not cacheable:
+                            raise ConnectorError(
+                                "static_scan_failed",
+                                "첨부파일 검사를 완료하지 못했어요. 잠시 후 다시 시도해 주세요.",
+                                503,
+                            )
+                        raise ConnectorError(
+                            "static_result_changed",
+                            "메일 본문의 정적 검사 결과가 바뀌었어요. "
+                            "메일 목록을 새로고침해 주세요.",
+                            409,
+                        )
         if not detection or detection.get("status") != "ok":
             return {"skipped": True, "reason": "static_not_ready"}
         if detection.get("verdict") not in {"suspicious", "danger"}:

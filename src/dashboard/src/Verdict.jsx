@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { scoreReason } from './api'
+import { pdfResultLabel, scoreReason } from './api'
 import { TYPES } from './rules'
 import { Badge, CloseIcon, Mark, STATES, fmtShort, fmtTime, stateOf } from './ui'
 import { canStartDynamic, dynamicError, dynamicStatus } from './dynamicState'
@@ -154,7 +154,7 @@ export function VerdictDetail({ r, onStartDynamic }) {
   return (
     <div className="verdict">
       <div className={`band ${state}`}>
-        <p className="band-state"><Mark v={state} size={20} />{!r.title && '정적 검사 · '}{STATES[state].label}</p>
+        <p className="band-state"><Mark v={state} size={20} />{!r.title && '메일 본문 정적 검사 · '}{STATES[state].label}</p>
         <p>{SUMMARY[state]}</p>
       </div>
 
@@ -166,7 +166,8 @@ export function VerdictDetail({ r, onStartDynamic }) {
           {r.sender && <tr><th scope="row">보낸 사람</th><td className="mono">{r.sender}</td></tr>}
           {r.received_at && <tr><th scope="row">받은 시각</th><td>{fmtTime(r.received_at)}</td></tr>}
           {r.attachments?.length > 0 && <tr><th scope="row">첨부파일</th><td><ul className="plain">
-            {r.attachments.map((file, i) => <li key={i}>{file.filename || '(이름 없음)'} · {PDF_STATUS[file.pdf_status] ?? '내용 검사 제외'}</li>)}
+            {r.attachments.map((file, i) => <li key={i}>{file.filename || '(이름 없음)'} · {PDF_STATUS[file.pdf_status] ?? '내용 검사 제외'}
+              {file.pdf_status === 'parsed' && <> · {pdfResultLabel(r.pdf_results, i)}</>}</li>)}
           </ul></td></tr>}
           {r.llm_reason && <tr><th scope="row">문맥 분석</th><td>{r.llm_reason}</td></tr>}
           {r.status === 'incomplete' && r.missing_parts.length > 0 && (

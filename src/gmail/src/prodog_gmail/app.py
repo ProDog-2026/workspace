@@ -21,7 +21,7 @@ from .dynamic_api import install_dynamic_routes
 from .errors import ConnectorError
 from .google import GoogleClient
 from .mail import mail_metadata, parse_gmail_message
-from .scan import load_detector, model_key, scan_mail
+from .scan import cacheable_detection, load_detector, model_key, scan_mail
 from .store import Store
 from .supabase import Supabase
 
@@ -345,7 +345,7 @@ def create_app(settings: Settings | None = None, transport=None, dynamic_transpo
                     metadata = mail_metadata(parsed)
                     detection = scan_mail(detector, parsed)
                     store.save_metadata(current["account_id"], metadata)
-                    if detection is None or detection["status"] == "ok":  # Never cache failures.
+                    if cacheable_detection(detection):
                         store.save_scan(current["account_id"], message_id, key, detection)
                     return {
                         **metadata,

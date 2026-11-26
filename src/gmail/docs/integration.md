@@ -39,7 +39,7 @@ Google이 갱신 권한을 거부하면 저장 bundle에 `needs_reconnect`를 �
 이미 결정된 값이며 대시보드는 `static_score`로 판정을 다시 계산하지 않는다. R01~R07 데모 규칙은
 이 값에 합산하지 않는다.
 
-`detection.thresholds`는 그 판정에 쓴 모델 기준을 같은 백분율로 준다. 본문과 텍스트를 읽은 PDF를 각각 검사해 가장 높은 판정을 사용하며, 해당 판정이 PDF에서 나왔으면 `detection.source`에 `pdf`를 반환한다.
+`detection.verdict`와 `detection.thresholds`는 본문 검사 결과와 해당 모델 기준이다. 텍스트를 읽은 PDF의 검사 결과는 `detection.pdf_results`에 따로 담으며, 각 항목의 `attachment_index`는 `attachments` 배열의 인덱스다. 동적 검사 전달 여부는 본문 판정을 기준으로 한다.
 대시보드는 이 값을 "왜 이 판정인지" 설명하는 데만 쓰고 판정을 다시 계산하지 않는다.
 
 Google 모드의 목록은 받은편지함만 대상으로 한다. 페이지 토큰은 불투명한 값으로 그대로 다음 요청에 전달한다. 전체 메일 개수로 `result_size_estimate`를 사용하지 않는다. [Gmail 목록 API](https://developers.google.com/workspace/gmail/api/guides/list-messages)

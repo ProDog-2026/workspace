@@ -40,15 +40,18 @@ export const toRow = (m) => {
   const d = m.detection
   const scanned = d?.status === 'ok'
   const excluded = m.attachments.filter((attachment) => attachment.pdf_status !== 'parsed').length
+  const failedPdfs = (d?.pdf_results ?? []).filter((result) => result.status === 'failed').length
   const missing = [
     ...m.warnings.filter((w) => w !== 'attachment_content_not_analyzed'), // 첨부는 아래 문장으로
     ...(excluded ? [`첨부파일 ${excluded}개 (내용 검사 안 함)`] : []),
+    ...(failedPdfs ? [`PDF ${failedPdfs}개 (정적 검사 실패)`] : []),
   ]
   return {
     id: m.id,
     body_hash: m.body_hash,
     dynamic: m.dynamic ?? null,
     attachments: m.attachments,
+    pdf_results: d?.pdf_results ?? [],
     gmail_message_id: m.id,
     sender: m.sender,
     subject: m.subject,
@@ -65,6 +68,16 @@ export const toRow = (m) => {
     thresholds: scanned ? d.thresholds ?? null : null,
     static_source: scanned ? d.source ?? null : null,
   }
+}
+
+// PDF 결과는 첨부파일 인덱스로 연결하고 메일 본문 판정과 따로 표시한다.
+export function pdfResultLabel(results, attachmentIndex) {
+  const result = results?.find((item) => item.attachment_index === attachmentIndex)
+  if (!result) return 'PDF 정적 검사 결과 없음'
+  if (result.status !== 'ok') return 'PDF 정적 검사 실패'
+  const label = { safe: '정상', suspicious: '의심', danger: '위험' }[result.verdict]
+  if (!label) return 'PDF 정적 검사 결과 없음'
+  return `PDF 정적 검사 · ${label}${result.static_score == null ? '' : ` · ${result.static_score}점`}`
 }
 
 // "정적 8% · 의심 기준 5% 이상 …" 한 줄. 판정은 다시 계산하지 않고 이미 나온 verdict 를 설명만 함

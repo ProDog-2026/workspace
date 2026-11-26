@@ -252,30 +252,25 @@ def test_pdf_text_is_classified_before_the_same_mail_enters_dynamic_queue(setup,
 
     class AgendaScore:
         def predict_proba(self, texts):
-            return np.array([[0.8, 0.2] if pdf_note in text else [0.9, 0.1] for text in texts])
+            return np.array([[0.1, 0.9] if pdf_note in text else [0.8, 0.2] for text in texts])
 
     client.app.state.detector = artifact() | {"pipeline": AgendaScore()}
     with monkeypatch.context() as transient:
         transient.setattr("prodog_gmail.mail.extract_pdf_text", lambda *_: ("limit", ""))
         limited = client.get("/api/mails").json()["messages"][0]
         assert limited["attachments"][0]["pdf_status"] == "limit"
-        assert limited["detection"]["static_score"] == 10
+        assert limited["detection"]["static_score"] == 20
     refresh = change(client, f"/api/dynamic/mail/{limited['id']}?start=true")
-    assert refresh.status_code == 409
-    assert refresh.json()["error"]["code"] == "static_result_changed"
+    assert refresh.status_code == 202, refresh.text
 
     response = client.get("/api/mails")
     mail = response.json()["messages"][0]
     assert mail["attachments"][0]["pdf_status"] == "parsed"
     assert mail["detection"]["verdict"] == "suspicious"
-    assert mail["detection"]["source"] == "pdf"
+    assert mail["detection"]["pdf_results"][0]["verdict"] == "danger"
     assert pdf_note not in response.text
     assert pdf_note not in client.get(f"/api/mails/{mail['id']}").text
-    assert service.submitted == []
-
-    response = change(client, f"/api/dynamic/mail/{mail['id']}?start=true")
-    assert response.status_code == 202, response.text
-    job = wait_job(client, response.json()["job"]["id"])
+    job = wait_job(client, refresh.json()["job"]["id"])
     assert job["status"] == "completed"
     assert job["static_detection"] == mail["detection"]
     assert job["pdf_attachments_count"] == 1
@@ -294,6 +289,101 @@ def test_pdf_text_is_classified_before_the_same_mail_enters_dynamic_queue(setup,
     assert cached["attachments"][0]["pdf_status"] == "parsed"
     assert cached["detection"] == mail["detection"]
     assert cached["dynamic"]["id"] == job["id"]
+
+
+
+
+def test_pdf_scan_failure_retries_after_dynamic_start(setup, monkeypatch):
+    client, _, _ = setup
+    pdf_note = "Synthetic attachment to retry"
+    raw = mail_with_pdfs(pdf_bytes(pdf_note))
+    monkeypatch.setattr("prodog_gmail.app.demo_messages", lambda: [raw])
+
+    class IntermittentPdfScore:
+        fail_pdf = True
+
+        def predict_proba(self, texts):
+            if self.fail_pdf and any(pdf_note in text for text in texts):
+                raise RuntimeError("PDF scan failed")
+            return np.array([[0.8, 0.2] for _ in texts])
+
+    pipeline = IntermittentPdfScore()
+    client.app.state.detector = artifact() | {"pipeline": pipeline}
+    with monkeypatch.context() as transient:
+        transient.setattr("prodog_gmail.mail.extract_pdf_text", lambda *_: ("limit", ""))
+        mail = client.get("/api/mails").json()["messages"][0]
+
+    response = change(client, f"/api/dynamic/mail/{mail['id']}?start=true")
+    assert response.status_code == 202, response.text
+    assert response.json()["job"]["static_detection"]["pdf_results"][0]["status"] == "failed"
+    pipeline.fail_pdf = False
+    retry = change(client, f"/api/dynamic/mail/{mail['id']}?start=true")
+    assert retry.status_code == 202, retry.text
+    refreshed = client.get("/api/mails").json()["messages"][0]
+    assert refreshed["detection"]["pdf_results"][0]["status"] == "ok"
+
+
+
+def test_body_change_with_failed_pdf_scan_can_be_retried(setup, monkeypatch):
+    client, _, _ = setup
+    pdf_note = "Synthetic PDF scan retry"
+    raw = mail_with_pdfs(pdf_bytes(pdf_note))
+    monkeypatch.setattr("prodog_gmail.app.demo_messages", lambda: [raw])
+
+    class ChangingScore:
+        changed = False
+        fail_pdf = True
+
+        def predict_proba(self, texts):
+            if self.fail_pdf and any(pdf_note in text for text in texts):
+                raise RuntimeError("PDF scan failed")
+            probability = 0.9 if self.changed else 0.2
+            return np.array([[1 - probability, probability] for _ in texts])
+
+    pipeline = ChangingScore()
+    client.app.state.detector = artifact() | {"pipeline": pipeline}
+    with monkeypatch.context() as transient:
+        transient.setattr("prodog_gmail.mail.extract_pdf_text", lambda *_: ("limit", ""))
+        mail = client.get("/api/mails").json()["messages"][0]
+    assert mail["attachments"][0]["pdf_status"] == "limit"
+    assert mail["detection"]["verdict"] == "suspicious"
+    pipeline.changed = True
+    failed = change(client, f"/api/dynamic/mail/{mail['id']}?start=true")
+    assert failed.status_code == 503
+    assert failed.json()["error"]["code"] == "static_scan_failed"
+    pipeline.fail_pdf = False
+    changed = change(client, f"/api/dynamic/mail/{mail['id']}?start=true")
+    assert changed.status_code == 409
+    assert changed.json()["error"]["code"] == "static_result_changed"
+    refreshed = client.get("/api/mails").json()["messages"][0]
+    assert refreshed["detection"]["verdict"] == "danger"
+
+
+def test_changed_body_verdict_requires_refresh_before_dynamic_submission(setup, monkeypatch):
+    client, service, _ = setup
+    raw = mail_with_pdfs(pdf_bytes("Synthetic PDF"))
+    monkeypatch.setattr("prodog_gmail.app.demo_messages", lambda: [raw])
+
+    class ChangingScore:
+        probability = 0.2
+
+        def predict_proba(self, texts):
+            return np.array([[1 - self.probability, self.probability] for _ in texts])
+
+    pipeline = ChangingScore()
+    client.app.state.detector = artifact() | {"pipeline": pipeline}
+    with monkeypatch.context() as transient:
+        transient.setattr("prodog_gmail.mail.extract_pdf_text", lambda *_: ("limit", ""))
+        mail = client.get("/api/mails").json()["messages"][0]
+    assert mail["detection"]["verdict"] == "suspicious"
+
+    pipeline.probability = 0.9
+    response = change(client, f"/api/dynamic/mail/{mail['id']}?start=true")
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "static_result_changed"
+    refreshed = client.get("/api/mails").json()["messages"][0]
+    assert refreshed["detection"]["verdict"] == "danger"
+    assert service.submitted == []
 
 
 def test_linked_result_remains_visible_after_a_standalone_experiment(setup):
