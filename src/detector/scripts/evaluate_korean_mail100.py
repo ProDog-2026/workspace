@@ -58,8 +58,16 @@ def strip_hidden(raw: bytes, injection: str) -> bytes:
     return out
 
 
+SECTION_START = re.compile(
+    r"^(?=\[(?:SUBJECT|FROM|REPLY_TO|TO|PART|HTML_RAW|HTML_TEXT|PLAIN)\])", re.M
+)
+
+
 def section(model_text: str, tag: str) -> str:
-    return "\n".join(line for line in model_text.splitlines() if line.startswith(tag))
+    """태그로 시작하는 섹션 전체를 다음 태그 직전까지 모은다. 여러 줄 HTML도 빠지지 않는다."""
+    return "\n".join(
+        chunk.rstrip("\n") for chunk in SECTION_START.split(model_text) if chunk.startswith(tag)
+    )
 
 
 def pdf_text(path: Path) -> str | None:
@@ -128,6 +136,14 @@ def main(argv: list[str] | None = None) -> int:
             대조군_판정=control["verdict"],
             순위_역전=attack["prompt_injection_probability"]
             <= control["prompt_injection_probability"],
+            # 합친 판정만으로는 어느 모델이 오탐을 냈는지 알 수 없어 모델별 판정도 남긴다.
+            모델별={
+                name: {
+                    "공격_판정": result["verdict"],
+                    "대조군_판정": control.get("detectors", {"tfidf": control})[name]["verdict"],
+                }
+                for name, result in attack.get("detectors", {"tfidf": attack}).items()
+            },
         )
         if pdf_texts:
             row.update(
@@ -150,6 +166,15 @@ def main(argv: list[str] | None = None) -> int:
                 ),
                 4,
             ),
+            "모델별": {
+                name: {
+                    "공격_탐지_건수": sum(r["모델별"][name]["공격_판정"] in FLAGGED for r in group),
+                    "대조군_오탐_건수": sum(
+                        r["모델별"][name]["대조군_판정"] in FLAGGED for r in group
+                    ),
+                }
+                for name in group[0]["모델별"]
+            },
         }
         if pdf_texts:
             out["PDF_추출률"] = round(sum(r["PDF_추출_포함"] for r in group) / len(group), 4)
@@ -167,7 +192,11 @@ def main(argv: list[str] | None = None) -> int:
         report = {
             "데이터": args.dataset_dir.name,
             "용도": "보고 전용. 학습과 임계값 조정에 사용하지 않는다.",
-            "모델": {"tfidf": str(args.model), "transformer": str(args.transformer_model)},
+            # 실제로 점수를 낸 모델만 적는다. Transformer가 없으면 TF-IDF만 남는다.
+            "실행한_모델": {
+                name: (args.model if name == "tfidf" else args.transformer_model).as_posix()
+                for name in rows[0]["모델별"]
+            },
             "요약": summary,
             "메일별": rows,
         }

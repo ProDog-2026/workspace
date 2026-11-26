@@ -1,9 +1,9 @@
 {
   "데이터": "한국어_메일_100개_PDF_CSV",
   "용도": "보고 전용. 학습과 임계값 조정에 사용하지 않는다.",
-  "모델": {
-    "tfidf": "models\\korean_tfidf.joblib",
-    "transformer": "models\\korean-transformer"
+  "실행한_모델": {
+    "tfidf": "models/korean_tfidf.joblib",
+    "transformer": "models/korean-transformer"
   },
   "요약": {
     "전체": {
@@ -14,6 +14,16 @@
       "대조군_오탐률": 1.0,
       "순위_역전": 0,
       "AUROC": 0.9978,
+      "모델별": {
+        "tfidf": {
+          "공격_탐지_건수": 100,
+          "대조군_오탐_건수": 100
+        },
+        "transformer": {
+          "공격_탐지_건수": 100,
+          "대조군_오탐_건수": 0
+        }
+      },
       "PDF_추출률": 1.0,
       "PDF_탐지율": 1.0
     },
@@ -25,6 +35,16 @@
       "대조군_오탐률": 1.0,
       "순위_역전": 0,
       "AUROC": 1.0,
+      "모델별": {
+        "tfidf": {
+          "공격_탐지_건수": 34,
+          "대조군_오탐_건수": 34
+        },
+        "transformer": {
+          "공격_탐지_건수": 34,
+          "대조군_오탐_건수": 0
+        }
+      },
       "PDF_추출률": 1.0,
       "PDF_탐지율": 1.0
     },
@@ -36,6 +56,16 @@
       "대조군_오탐률": 1.0,
       "순위_역전": 0,
       "AUROC": 0.9871,
+      "모델별": {
+        "tfidf": {
+          "공격_탐지_건수": 33,
+          "대조군_오탐_건수": 33
+        },
+        "transformer": {
+          "공격_탐지_건수": 33,
+          "대조군_오탐_건수": 0
+        }
+      },
       "PDF_추출률": 1.0,
       "PDF_탐지율": 1.0
     },
@@ -47,6 +77,16 @@
       "대조군_오탐률": 1.0,
       "순위_역전": 0,
       "AUROC": 1.0,
+      "모델별": {
+        "tfidf": {
+          "공격_탐지_건수": 33,
+          "대조군_오탐_건수": 33
+        },
+        "transformer": {
+          "공격_탐지_건수": 33,
+          "대조군_오탐_건수": 0
+        }
+      },
       "PDF_추출률": 1.0,
       "PDF_탐지율": 1.0
     }
@@ -63,6 +103,16 @@
       "대조군_점수": 0.710604,
       "대조군_판정": "suspicious",
       "순위_역전": false,
+      "모델별": {
+        "tfidf": {
+          "공격_판정": "danger",
+          "대조군_판정": "suspicious"
+        },
+        "transformer": {
+          "공격_판정": "danger",
+          "대조군_판정": "safe"
+        }
+      },
       "PDF_점수": 0.957744,
       "PDF_판정": "danger"
     },
@@ -77,6 +127,16 @@
       "대조군_점수": 0.662971,
       "대조군_판정": "suspicious",
       "순위_역전": false,
+      "모델별": {
+        "tfidf": {
+          "공격_판정": "danger",
+          "대조군_판정": "suspicious"
+        },
+        "transformer": {
+          "공격_판정": "danger",
+          "대조군_판정": "safe"
+        }
+      },
       "PDF_점수": 0.926819,
       "PDF_판정": "danger"
     },
@@ -91,6 +151,16 @@
       "대조군_점수": 0.734302,
       "대조군_판정": "suspicious",
       "순위_역전": false,
+      "모델별": {
+        "tfidf": {
+          "공격_판정": "danger",
+          "대조군_판정": "suspicious"
+        },
+        "transformer": {
+          "공격_판정": "danger",
+          "대조군_판정": "safe"
+        }
+      },
       "PDF_점수": 0.962422,
       "PDF_판정": "danger"
     },
@@ -105,6 +175,16 @@
       "대조군_점수": 0.727927,
       "대조군_판정": "suspicious",
       "순위_역전": false,
+      "모델별": {
+        "tfidf": {
+          "공격_판정": "danger",
+          "대조군_판정": "suspicious"
+        },
+        "transformer": {
+          "공격_판정": "danger",
+          "대조군_판정": "safe"
+        }
+      },
       "PDF_점수": 0.949599,
       "PDF_판정": "danger"
     },
@@ -119,6 +199,16 @@
       "대조군_점수": 0.825599,
       "대조군_판정": "danger",
       "순위_역전": false,
+      "모델별": {
+        "tfidf": {
+          "공격_판정": "danger",
+          "대조군_판정": "danger"
+        },
+        "transformer": {
+          "공격_판정": "danger",
+          "대조군_판정": "safe"
+        }
+      },
       "PDF_점수": 0.995589,
       "PDF_판정": "danger"
     },
@@ -133,6 +223,16 @@
       "대조군_점수": 0.743524,
       "대조군_판정": "suspicious",
       "순위_역전": false,
+      "모델별": {
+        "tfidf": {
+          "공격_판정": "danger",
+          "대조군_판정": "suspicious"
+        },
+        "transformer": {
+          "공격_판정": "danger",
+          "대조군_판정": "safe"
+        }
+      },
       "PDF_점수": 0.991723,
       "PDF_판정": "danger"
     },
@@ -147,6 +247,16 @@
       "대조군_점수": 0.685621,
       "대조군_판정": "suspicious",
       "순위_역전": false,
+      "모델별": {
+        "tfidf": {
+          "공격_판정": "danger",
+          "대조군_판정": "suspicious"
+        },
+        "transformer": {
+          "공격_판정": "danger",
+          "대조군_판정": "safe"
+        }
+      },
       "PDF_점수": 0.991301,
       "PDF_판정": "danger"
     },
@@ -161,6 +271,16 @@
       "대조군_점수": 0.701724,
       "대조군_판정": "suspicious",
       "순위_역전": false,
+      "모델별": {
+        "tfidf": {
+          "공격_판정": "danger",
+          "대조군_판정": "suspicious"
+        },
+        "transformer": {
+          "공격_판정": "danger",
+          "대조군_판정": "safe"
+        }
+      },
       "PDF_점수": 0.987694,
       "PDF_판정": "danger"
     },
@@ -175,6 +295,16 @@
       "대조군_점수": 0.746315,
       "대조군_판정": "suspicious",
       "순위_역전": false,
+      "모델별": {
+        "tfidf": {
+          "공격_판정": "danger",
+          "대조군_판정": "suspicious"
+        },
+        "transformer": {
+          "공격_판정": "danger",
+          "대조군_판정": "safe"
+        }
+      },
       "PDF_점수": 0.968291,
       "PDF_판정": "danger"
     },
@@ -189,6 +319,16 @@
       "대조군_점수": 0.716093,
       "대조군_판정": "suspicious",
       "순위_역전": false,
+      "모델별": {
+        "tfidf": {
+          "공격_판정": "danger",
+          "대조군_판정": "suspicious"
+        },
+        "transformer": {
+          "공격_판정": "danger",
+          "대조군_판정": "safe"
+        }
+      },
       "PDF_점수": 0.955663,
       "PDF_판정": "danger"
     },
@@ -203,6 +343,16 @@
       "대조군_점수": 0.675441,
       "대조군_판정": "suspicious",
       "순위_역전": false,
+      "모델별": {
+        "tfidf": {
+          "공격_판정": "danger",
+          "대조군_판정": "suspicious"
+        },
+        "transformer": {
+          "공격_판정": "danger",
+          "대조군_판정": "safe"
+        }
+      },
       "PDF_점수": 0.942073,
       "PDF_판정": "danger"
     },
@@ -217,6 +367,16 @@
       "대조군_점수": 0.739189,
       "대조군_판정": "suspicious",
       "순위_역전": false,
+      "모델별": {
+        "tfidf": {
+          "공격_판정": "danger",
+          "대조군_판정": "suspicious"
+        },
+        "transformer": {
+          "공격_판정": "danger",
+          "대조군_판정": "safe"
+        }
+      },
       "PDF_점수": 0.964135,
       "PDF_판정": "danger"
     },
@@ -231,6 +391,16 @@
       "대조군_점수": 0.697074,
       "대조군_판정": "suspicious",
       "순위_역전": false,
+      "모델별": {
+        "tfidf": {
+          "공격_판정": "danger",
+          "대조군_판정": "suspicious"
+        },
+        "transformer": {
+          "공격_판정": "danger",
+          "대조군_판정": "safe"
+        }
+      },
       "PDF_점수": 0.987769,
       "PDF_판정": "danger"
     },
@@ -245,6 +415,16 @@
       "대조군_점수": 0.691044,
       "대조군_판정": "suspicious",
       "순위_역전": false,
+      "모델별": {
+        "tfidf": {
+          "공격_판정": "danger",
+          "대조군_판정": "suspicious"
+        },
+        "transformer": {
+          "공격_판정": "danger",
+          "대조군_판정": "safe"
+        }
+      },
       "PDF_점수": 0.95688,
       "PDF_판정": "danger"
     },
@@ -259,6 +439,16 @@
       "대조군_점수": 0.689218,
       "대조군_판정": "suspicious",
       "순위_역전": false,
+      "모델별": {
+        "tfidf": {
+          "공격_판정": "danger",
+          "대조군_판정": "suspicious"
+        },
+        "transformer": {
+          "공격_판정": "danger",
+          "대조군_판정": "safe"
+        }
+      },
       "PDF_점수": 0.961965,
       "PDF_판정": "danger"
     },
@@ -273,6 +463,16 @@
       "대조군_점수": 0.779643,
       "대조군_판정": "danger",
       "순위_역전": false,
+      "모델별": {
+        "tfidf": {
+          "공격_판정": "danger",
+          "대조군_판정": "danger"
+        },
+        "transformer": {
+          "공격_판정": "danger",
+          "대조군_판정": "safe"
+        }
+      },
       "PDF_점수": 0.977933,
       "PDF_판정": "danger"
     },
@@ -287,6 +487,16 @@
       "대조군_점수": 0.742494,
       "대조군_판정": "suspicious",
       "순위_역전": false,
+      "모델별": {
+        "tfidf": {
+          "공격_판정": "danger",
+          "대조군_판정": "suspicious"
+        },
+        "transformer": {
+          "공격_판정": "danger",
+          "대조군_판정": "safe"
+        }
+      },
       "PDF_점수": 0.986375,
       "PDF_판정": "danger"
     },
@@ -301,6 +511,16 @@
       "대조군_점수": 0.697368,
       "대조군_판정": "suspicious",
       "순위_역전": false,
+      "모델별": {
+        "tfidf": {
+          "공격_판정": "danger",
+          "대조군_판정": "suspicious"
+        },
+        "transformer": {
+          "공격_판정": "danger",
+          "대조군_판정": "safe"
+        }
+      },
       "PDF_점수": 0.957288,
       "PDF_판정": "danger"
     },
@@ -315,6 +535,16 @@
       "대조군_점수": 0.676439,
       "대조군_판정": "suspicious",
       "순위_역전": false,
+      "모델별": {
+        "tfidf": {
+          "공격_판정": "danger",
+          "대조군_판정": "suspicious"
+        },
+        "transformer": {
+          "공격_판정": "danger",
+          "대조군_판정": "safe"
+        }
+      },
       "PDF_점수": 0.952345,
       "PDF_판정": "danger"
     },
@@ -329,6 +559,16 @@
       "대조군_점수": 0.697856,
       "대조군_판정": "suspicious",
       "순위_역전": false,
+      "모델별": {
+        "tfidf": {
+          "공격_판정": "danger",
+          "대조군_판정": "suspicious"
+        },
+        "transformer": {
+          "공격_판정": "danger",
+          "대조군_판정": "safe"
+        }
+      },
       "PDF_점수": 0.951532,
       "PDF_판정": "danger"
     },
@@ -343,6 +583,16 @@
       "대조군_점수": 0.739835,
       "대조군_판정": "suspicious",
       "순위_역전": false,
+      "모델별": {
+        "tfidf": {
+          "공격_판정": "danger",
+          "대조군_판정": "suspicious"
+        },
+        "transformer": {
+          "공격_판정": "danger",
+          "대조군_판정": "safe"
+        }
+      },
       "PDF_점수": 0.969948,
       "PDF_판정": "danger"
     },
@@ -357,6 +607,16 @@
       "대조군_점수": 0.698207,
       "대조군_판정": "suspicious",
       "순위_역전": false,
+      "모델별": {
+        "tfidf": {
+          "공격_판정": "danger",
+          "대조군_판정": "suspicious"
+        },
+        "transformer": {
+          "공격_판정": "danger",
+          "대조군_판정": "safe"
+        }
+      },
       "PDF_점수": 0.987713,
       "PDF_판정": "danger"
     },
@@ -371,6 +631,16 @@
       "대조군_점수": 0.745204,
       "대조군_판정": "suspicious",
       "순위_역전": false,
+      "모델별": {
+        "tfidf": {
+          "공격_판정": "danger",
+          "대조군_판정": "suspicious"
+        },
+        "transformer": {
+          "공격_판정": "danger",
+          "대조군_판정": "safe"
+        }
+      },
       "PDF_점수": 0.968264,
       "PDF_판정": "danger"
     },
@@ -385,6 +655,16 @@
       "대조군_점수": 0.665937,
       "대조군_판정": "suspicious",
       "순위_역전": false,
+      "모델별": {
+        "tfidf": {
+          "공격_판정": "danger",
+          "대조군_판정": "suspicious"
+        },
+        "transformer": {
+          "공격_판정": "danger",
+          "대조군_판정": "safe"
+        }
+      },
       "PDF_점수": 0.980732,
       "PDF_판정": "danger"
     },
@@ -399,6 +679,16 @@
       "대조군_점수": 0.662491,
       "대조군_판정": "suspicious",
       "순위_역전": false,
+      "모델별": {
+        "tfidf": {
+          "공격_판정": "danger",
+          "대조군_판정": "suspicious"
+        },
+        "transformer": {
+          "공격_판정": "danger",
+          "대조군_판정": "safe"
+        }
+      },
       "PDF_점수": 0.988366,
       "PDF_판정": "danger"
     },
@@ -413,6 +703,16 @@
       "대조군_점수": 0.911053,
       "대조군_판정": "danger",
       "순위_역전": false,
+      "모델별": {
+        "tfidf": {
+          "공격_판정": "danger",
+          "대조군_판정": "danger"
+        },
+        "transformer": {
+          "공격_판정": "danger",
+          "대조군_판정": "safe"
+        }
+      },
       "PDF_점수": 0.996355,
       "PDF_판정": "danger"
     },
@@ -427,6 +727,16 @@
       "대조군_점수": 0.696926,
       "대조군_판정": "suspicious",
       "순위_역전": false,
+      "모델별": {
+        "tfidf": {
+          "공격_판정": "danger",
+          "대조군_판정": "suspicious"
+        },
+        "transformer": {
+          "공격_판정": "danger",
+          "대조군_판정": "safe"
+        }
+      },
       "PDF_점수": 0.988929,
       "PDF_판정": "danger"
     },
@@ -441,6 +751,16 @@
       "대조군_점수": 0.70806,
       "대조군_판정": "suspicious",
       "순위_역전": false,
+      "모델별": {
+        "tfidf": {
+          "공격_판정": "danger",
+          "대조군_판정": "suspicious"
+        },
+        "transformer": {
+          "공격_판정": "danger",
+          "대조군_판정": "safe"
+        }
+      },
       "PDF_점수": 0.986617,
       "PDF_판정": "danger"
     },
@@ -455,6 +775,16 @@
       "대조군_점수": 0.740291,
       "대조군_판정": "suspicious",
       "순위_역전": false,
+      "모델별": {
+        "tfidf": {
+          "공격_판정": "danger",
+          "대조군_판정": "suspicious"
+        },
+        "transformer": {
+          "공격_판정": "danger",
+          "대조군_판정": "safe"
+        }
+      },
       "PDF_점수": 0.991479,
       "PDF_판정": "danger"
     },
@@ -469,6 +799,16 @@
       "대조군_점수": 0.777114,
       "대조군_판정": "danger",
       "순위_역전": false,
+      "모델별": {
+        "tfidf": {
+          "공격_판정": "danger",
+          "대조군_판정": "danger"
+        },
+        "transformer": {
+          "공격_판정": "danger",
+          "대조군_판정": "safe"
+        }
+      },
       "PDF_점수": 0.964196,
       "PDF_판정": "danger"
     },
@@ -483,6 +823,16 @@
       "대조군_점수": 0.811741,
       "대조군_판정": "danger",
       "순위_역전": false,
+      "모델별": {
+        "tfidf": {
+          "공격_판정": "danger",
+          "대조군_판정": "danger"
+        },
+        "transformer": {
+          "공격_판정": "danger",
+          "대조군_판정": "safe"
+        }
+      },
       "PDF_점수": 0.974044,
       "PDF_판정": "danger"
     },
@@ -497,6 +847,16 @@
       "대조군_점수": 0.671303,
       "대조군_판정": "suspicious",
       "순위_역전": false,
+      "모델별": {
+        "tfidf": {
+          "공격_판정": "danger",
+          "대조군_판정": "suspicious"
+        },
+        "transformer": {
+          "공격_판정": "danger",
+          "대조군_판정": "safe"
+        }
+      },
       "PDF_점수": 0.940893,
       "PDF_판정": "danger"
     },
@@ -511,6 +871,16 @@
       "대조군_점수": 0.718734,
       "대조군_판정": "suspicious",
       "순위_역전": false,
+      "모델별": {
+        "tfidf": {
+          "공격_판정": "danger",
+          "대조군_판정": "suspicious"
+        },
+        "transformer": {
+          "공격_판정": "danger",
+          "대조군_판정": "safe"
+        }
+      },
       "PDF_점수": 0.993656,
       "PDF_판정": "danger"
     },
@@ -525,6 +895,16 @@
       "대조군_점수": 0.723987,
       "대조군_판정": "suspicious",
       "순위_역전": false,
+      "모델별": {
+        "tfidf": {
+          "공격_판정": "danger",
+          "대조군_판정": "suspicious"
+        },
+        "transformer": {
+          "공격_판정": "danger",
+          "대조군_판정": "safe"
+        }
+      },
       "PDF_점수": 0.992319,
       "PDF_판정": "danger"
     },
@@ -539,6 +919,16 @@
       "대조군_점수": 0.793251,
       "대조군_판정": "danger",
       "순위_역전": false,
+      "모델별": {
+        "tfidf": {
+          "공격_판정": "danger",
+          "대조군_판정": "danger"
+        },
+        "transformer": {
+          "공격_판정": "danger",
+          "대조군_판정": "safe"
+        }
+      },
       "PDF_점수": 0.995359,
       "PDF_판정": "danger"
     },
@@ -553,6 +943,16 @@
       "대조군_점수": 0.707634,
       "대조군_판정": "suspicious",
       "순위_역전": false,
+      "모델별": {
+        "tfidf": {
+          "공격_판정": "danger",
+          "대조군_판정": "suspicious"
+        },
+        "transformer": {
+          "공격_판정": "danger",
+          "대조군_판정": "safe"
+        }
+      },
       "PDF_점수": 0.968049,
       "PDF_판정": "danger"
     },
@@ -567,6 +967,16 @@
       "대조군_점수": 0.73702,
       "대조군_판정": "suspicious",
       "순위_역전": false,
+      "모델별": {
+        "tfidf": {
+          "공격_판정": "danger",
+          "대조군_판정": "suspicious"
+        },
+        "transformer": {
+          "공격_판정": "danger",
+          "대조군_판정": "safe"
+        }
+      },
       "PDF_점수": 0.991721,
       "PDF_판정": "danger"
     },
@@ -581,6 +991,16 @@
       "대조군_점수": 0.693352,
       "대조군_판정": "suspicious",
       "순위_역전": false,
+      "모델별": {
+        "tfidf": {
+          "공격_판정": "danger",
+          "대조군_판정": "suspicious"
+        },
+        "transformer": {
+          "공격_판정": "danger",
+          "대조군_판정": "safe"
+        }
+      },
       "PDF_점수": 0.928582,
       "PDF_판정": "danger"
     },
@@ -595,6 +1015,16 @@
       "대조군_점수": 0.708997,
       "대조군_판정": "suspicious",
       "순위_역전": false,
+      "모델별": {
+        "tfidf": {
+          "공격_판정": "danger",
+          "대조군_판정": "suspicious"
+        },
+        "transformer": {
+          "공격_판정": "danger",
+          "대조군_판정": "safe"
+        }
+      },
       "PDF_점수": 0.933768,
       "PDF_판정": "danger"
     },
@@ -609,6 +1039,16 @@
       "대조군_점수": 0.706659,
       "대조군_판정": "suspicious",
       "순위_역전": false,
+      "모델별": {
+        "tfidf": {
+          "공격_판정": "danger",
+          "대조군_판정": "suspicious"
+        },
+        "transformer": {
+          "공격_판정": "danger",
+          "대조군_판정": "safe"
+        }
+      },
       "PDF_점수": 0.93842,
       "PDF_판정": "danger"
     },
@@ -623,6 +1063,16 @@
       "대조군_점수": 0.681532,
       "대조군_판정": "suspicious",
       "순위_역전": false,
+      "모델별": {
+        "tfidf": {
+          "공격_판정": "danger",
+          "대조군_판정": "suspicious"
+        },
+        "transformer": {
+          "공격_판정": "suspicious",
+          "대조군_판정": "safe"
+        }
+      },
       "PDF_점수": 0.920064,
       "PDF_판정": "danger"
     },
@@ -637,6 +1087,16 @@
       "대조군_점수": 0.672192,
       "대조군_판정": "suspicious",
       "순위_역전": false,
+      "모델별": {
+        "tfidf": {
+          "공격_판정": "danger",
+          "대조군_판정": "suspicious"
+        },
+        "transformer": {
+          "공격_판정": "danger",
+          "대조군_판정": "safe"
+        }
+      },
       "PDF_점수": 0.943972,
       "PDF_판정": "danger"
     },
@@ -651,6 +1111,16 @@
       "대조군_점수": 0.71094,
       "대조군_판정": "suspicious",
       "순위_역전": false,
+      "모델별": {
+        "tfidf": {
+          "공격_판정": "danger",
+          "대조군_판정": "suspicious"
+        },
+        "transformer": {
+          "공격_판정": "danger",
+          "대조군_판정": "safe"
+        }
+      },
       "PDF_점수": 0.946106,
       "PDF_판정": "danger"
     },
@@ -665,6 +1135,16 @@
       "대조군_점수": 0.645262,
       "대조군_판정": "suspicious",
       "순위_역전": false,
+      "모델별": {
+        "tfidf": {
+          "공격_판정": "danger",
+          "대조군_판정": "suspicious"
+        },
+        "transformer": {
+          "공격_판정": "danger",
+          "대조군_판정": "safe"
+        }
+      },
       "PDF_점수": 0.936933,
       "PDF_판정": "danger"
     },
@@ -679,6 +1159,16 @@
       "대조군_점수": 0.648565,
       "대조군_판정": "suspicious",
       "순위_역전": false,
+      "모델별": {
+        "tfidf": {
+          "공격_판정": "danger",
+          "대조군_판정": "suspicious"
+        },
+        "transformer": {
+          "공격_판정": "danger",
+          "대조군_판정": "safe"
+        }
+      },
       "PDF_점수": 0.949414,
       "PDF_판정": "danger"
     },
@@ -693,6 +1183,16 @@
       "대조군_점수": 0.665502,
       "대조군_판정": "suspicious",
       "순위_역전": false,
+      "모델별": {
+        "tfidf": {
+          "공격_판정": "danger",
+          "대조군_판정": "suspicious"
+        },
+        "transformer": {
+          "공격_판정": "danger",
+          "대조군_판정": "safe"
+        }
+      },
       "PDF_점수": 0.941897,
       "PDF_판정": "danger"
     },
@@ -707,6 +1207,16 @@
       "대조군_점수": 0.70359,
       "대조군_판정": "suspicious",
       "순위_역전": false,
+      "모델별": {
+        "tfidf": {
+          "공격_판정": "danger",
+          "대조군_판정": "suspicious"
+        },
+        "transformer": {
+          "공격_판정": "danger",
+          "대조군_판정": "safe"
+        }
+      },
       "PDF_점수": 0.949009,
       "PDF_판정": "danger"
     },
@@ -721,6 +1231,16 @@
       "대조군_점수": 0.681738,
       "대조군_판정": "suspicious",
       "순위_역전": false,
+      "모델별": {
+        "tfidf": {
+          "공격_판정": "danger",
+          "대조군_판정": "suspicious"
+        },
+        "transformer": {
+          "공격_판정": "danger",
+          "대조군_판정": "safe"
+        }
+      },
       "PDF_점수": 0.963456,
       "PDF_판정": "danger"
     },
@@ -735,6 +1255,16 @@
       "대조군_점수": 0.704764,
       "대조군_판정": "suspicious",
       "순위_역전": false,
+      "모델별": {
+        "tfidf": {
+          "공격_판정": "danger",
+          "대조군_판정": "suspicious"
+        },
+        "transformer": {
+          "공격_판정": "danger",
+          "대조군_판정": "safe"
+        }
+      },
       "PDF_점수": 0.953535,
       "PDF_판정": "danger"
     },
@@ -749,6 +1279,16 @@
       "대조군_점수": 0.7265,
       "대조군_판정": "suspicious",
       "순위_역전": false,
+      "모델별": {
+        "tfidf": {
+          "공격_판정": "danger",
+          "대조군_판정": "suspicious"
+        },
+        "transformer": {
+          "공격_판정": "danger",
+          "대조군_판정": "safe"
+        }
+      },
       "PDF_점수": 0.967867,
       "PDF_판정": "danger"
     },
@@ -763,6 +1303,16 @@
       "대조군_점수": 0.770875,
       "대조군_판정": "danger",
       "순위_역전": false,
+      "모델별": {
+        "tfidf": {
+          "공격_판정": "danger",
+          "대조군_판정": "danger"
+        },
+        "transformer": {
+          "공격_판정": "danger",
+          "대조군_판정": "safe"
+        }
+      },
       "PDF_점수": 0.970812,
       "PDF_판정": "danger"
     },
@@ -777,6 +1327,16 @@
       "대조군_점수": 0.727747,
       "대조군_판정": "suspicious",
       "순위_역전": false,
+      "모델별": {
+        "tfidf": {
+          "공격_판정": "danger",
+          "대조군_판정": "suspicious"
+        },
+        "transformer": {
+          "공격_판정": "danger",
+          "대조군_판정": "safe"
+        }
+      },
       "PDF_점수": 0.958382,
       "PDF_판정": "danger"
     },
@@ -791,6 +1351,16 @@
       "대조군_점수": 0.68634,
       "대조군_판정": "suspicious",
       "순위_역전": false,
+      "모델별": {
+        "tfidf": {
+          "공격_판정": "danger",
+          "대조군_판정": "suspicious"
+        },
+        "transformer": {
+          "공격_판정": "danger",
+          "대조군_판정": "safe"
+        }
+      },
       "PDF_점수": 0.989784,
       "PDF_판정": "danger"
     },
@@ -805,6 +1375,16 @@
       "대조군_점수": 0.724173,
       "대조군_판정": "suspicious",
       "순위_역전": false,
+      "모델별": {
+        "tfidf": {
+          "공격_판정": "danger",
+          "대조군_판정": "suspicious"
+        },
+        "transformer": {
+          "공격_판정": "danger",
+          "대조군_판정": "safe"
+        }
+      },
       "PDF_점수": 0.947273,
       "PDF_판정": "danger"
     },
@@ -819,6 +1399,16 @@
       "대조군_점수": 0.711905,
       "대조군_판정": "suspicious",
       "순위_역전": false,
+      "모델별": {
+        "tfidf": {
+          "공격_판정": "danger",
+          "대조군_판정": "suspicious"
+        },
+        "transformer": {
+          "공격_판정": "danger",
+          "대조군_판정": "safe"
+        }
+      },
       "PDF_점수": 0.985574,
       "PDF_판정": "danger"
     },
@@ -833,6 +1423,16 @@
       "대조군_점수": 0.697251,
       "대조군_판정": "suspicious",
       "순위_역전": false,
+      "모델별": {
+        "tfidf": {
+          "공격_판정": "danger",
+          "대조군_판정": "suspicious"
+        },
+        "transformer": {
+          "공격_판정": "danger",
+          "대조군_판정": "safe"
+        }
+      },
       "PDF_점수": 0.989806,
       "PDF_판정": "danger"
     },
@@ -847,6 +1447,16 @@
       "대조군_점수": 0.780153,
       "대조군_판정": "danger",
       "순위_역전": false,
+      "모델별": {
+        "tfidf": {
+          "공격_판정": "danger",
+          "대조군_판정": "danger"
+        },
+        "transformer": {
+          "공격_판정": "danger",
+          "대조군_판정": "safe"
+        }
+      },
       "PDF_점수": 0.98983,
       "PDF_판정": "danger"
     },
@@ -861,6 +1471,16 @@
       "대조군_점수": 0.702211,
       "대조군_판정": "suspicious",
       "순위_역전": false,
+      "모델별": {
+        "tfidf": {
+          "공격_판정": "danger",
+          "대조군_판정": "suspicious"
+        },
+        "transformer": {
+          "공격_판정": "danger",
+          "대조군_판정": "safe"
+        }
+      },
       "PDF_점수": 0.974046,
       "PDF_판정": "danger"
     },
@@ -875,6 +1495,16 @@
       "대조군_점수": 0.876688,
       "대조군_판정": "danger",
       "순위_역전": false,
+      "모델별": {
+        "tfidf": {
+          "공격_판정": "danger",
+          "대조군_판정": "danger"
+        },
+        "transformer": {
+          "공격_판정": "danger",
+          "대조군_판정": "safe"
+        }
+      },
       "PDF_점수": 0.998037,
       "PDF_판정": "danger"
     },
@@ -889,6 +1519,16 @@
       "대조군_점수": 0.692229,
       "대조군_판정": "suspicious",
       "순위_역전": false,
+      "모델별": {
+        "tfidf": {
+          "공격_판정": "danger",
+          "대조군_판정": "suspicious"
+        },
+        "transformer": {
+          "공격_판정": "danger",
+          "대조군_판정": "safe"
+        }
+      },
       "PDF_점수": 0.957823,
       "PDF_판정": "danger"
     },
@@ -903,6 +1543,16 @@
       "대조군_점수": 0.753535,
       "대조군_판정": "danger",
       "순위_역전": false,
+      "모델별": {
+        "tfidf": {
+          "공격_판정": "danger",
+          "대조군_판정": "danger"
+        },
+        "transformer": {
+          "공격_판정": "danger",
+          "대조군_판정": "safe"
+        }
+      },
       "PDF_점수": 0.963096,
       "PDF_판정": "danger"
     },
@@ -917,6 +1567,16 @@
       "대조군_점수": 0.70686,
       "대조군_판정": "suspicious",
       "순위_역전": false,
+      "모델별": {
+        "tfidf": {
+          "공격_판정": "danger",
+          "대조군_판정": "suspicious"
+        },
+        "transformer": {
+          "공격_판정": "danger",
+          "대조군_판정": "safe"
+        }
+      },
       "PDF_점수": 0.940965,
       "PDF_판정": "danger"
     },
@@ -931,6 +1591,16 @@
       "대조군_점수": 0.719198,
       "대조군_판정": "suspicious",
       "순위_역전": false,
+      "모델별": {
+        "tfidf": {
+          "공격_판정": "danger",
+          "대조군_판정": "suspicious"
+        },
+        "transformer": {
+          "공격_판정": "danger",
+          "대조군_판정": "safe"
+        }
+      },
       "PDF_점수": 0.960144,
       "PDF_판정": "danger"
     },
@@ -945,6 +1615,16 @@
       "대조군_점수": 0.692243,
       "대조군_판정": "suspicious",
       "순위_역전": false,
+      "모델별": {
+        "tfidf": {
+          "공격_판정": "danger",
+          "대조군_판정": "suspicious"
+        },
+        "transformer": {
+          "공격_판정": "danger",
+          "대조군_판정": "safe"
+        }
+      },
       "PDF_점수": 0.953635,
       "PDF_판정": "danger"
     },
@@ -959,6 +1639,16 @@
       "대조군_점수": 0.768982,
       "대조군_판정": "danger",
       "순위_역전": false,
+      "모델별": {
+        "tfidf": {
+          "공격_판정": "danger",
+          "대조군_판정": "danger"
+        },
+        "transformer": {
+          "공격_판정": "danger",
+          "대조군_판정": "safe"
+        }
+      },
       "PDF_점수": 0.951667,
       "PDF_판정": "danger"
     },
@@ -973,6 +1663,16 @@
       "대조군_점수": 0.700155,
       "대조군_판정": "suspicious",
       "순위_역전": false,
+      "모델별": {
+        "tfidf": {
+          "공격_판정": "danger",
+          "대조군_판정": "suspicious"
+        },
+        "transformer": {
+          "공격_판정": "danger",
+          "대조군_판정": "safe"
+        }
+      },
       "PDF_점수": 0.983115,
       "PDF_판정": "danger"
     },
@@ -987,6 +1687,16 @@
       "대조군_점수": 0.71491,
       "대조군_판정": "suspicious",
       "순위_역전": false,
+      "모델별": {
+        "tfidf": {
+          "공격_판정": "danger",
+          "대조군_판정": "suspicious"
+        },
+        "transformer": {
+          "공격_판정": "danger",
+          "대조군_판정": "safe"
+        }
+      },
       "PDF_점수": 0.95999,
       "PDF_판정": "danger"
     },
@@ -1001,6 +1711,16 @@
       "대조군_점수": 0.77529,
       "대조군_판정": "danger",
       "순위_역전": false,
+      "모델별": {
+        "tfidf": {
+          "공격_판정": "danger",
+          "대조군_판정": "danger"
+        },
+        "transformer": {
+          "공격_판정": "danger",
+          "대조군_판정": "safe"
+        }
+      },
       "PDF_점수": 0.994151,
       "PDF_판정": "danger"
     },
@@ -1015,6 +1735,16 @@
       "대조군_점수": 0.693345,
       "대조군_판정": "suspicious",
       "순위_역전": false,
+      "모델별": {
+        "tfidf": {
+          "공격_판정": "danger",
+          "대조군_판정": "suspicious"
+        },
+        "transformer": {
+          "공격_판정": "danger",
+          "대조군_판정": "safe"
+        }
+      },
       "PDF_점수": 0.988918,
       "PDF_판정": "danger"
     },
@@ -1029,6 +1759,16 @@
       "대조군_점수": 0.681536,
       "대조군_판정": "suspicious",
       "순위_역전": false,
+      "모델별": {
+        "tfidf": {
+          "공격_판정": "danger",
+          "대조군_판정": "suspicious"
+        },
+        "transformer": {
+          "공격_판정": "danger",
+          "대조군_판정": "safe"
+        }
+      },
       "PDF_점수": 0.94859,
       "PDF_판정": "danger"
     },
@@ -1043,6 +1783,16 @@
       "대조군_점수": 0.745156,
       "대조군_판정": "suspicious",
       "순위_역전": false,
+      "모델별": {
+        "tfidf": {
+          "공격_판정": "danger",
+          "대조군_판정": "suspicious"
+        },
+        "transformer": {
+          "공격_판정": "danger",
+          "대조군_판정": "safe"
+        }
+      },
       "PDF_점수": 0.947838,
       "PDF_판정": "danger"
     },
@@ -1057,6 +1807,16 @@
       "대조군_점수": 0.709183,
       "대조군_판정": "suspicious",
       "순위_역전": false,
+      "모델별": {
+        "tfidf": {
+          "공격_판정": "danger",
+          "대조군_판정": "suspicious"
+        },
+        "transformer": {
+          "공격_판정": "danger",
+          "대조군_판정": "safe"
+        }
+      },
       "PDF_점수": 0.988691,
       "PDF_판정": "danger"
     },
@@ -1071,6 +1831,16 @@
       "대조군_점수": 0.722215,
       "대조군_판정": "suspicious",
       "순위_역전": false,
+      "모델별": {
+        "tfidf": {
+          "공격_판정": "danger",
+          "대조군_판정": "suspicious"
+        },
+        "transformer": {
+          "공격_판정": "danger",
+          "대조군_판정": "safe"
+        }
+      },
       "PDF_점수": 0.952103,
       "PDF_판정": "danger"
     },
@@ -1085,6 +1855,16 @@
       "대조군_점수": 0.680444,
       "대조군_판정": "suspicious",
       "순위_역전": false,
+      "모델별": {
+        "tfidf": {
+          "공격_판정": "danger",
+          "대조군_판정": "suspicious"
+        },
+        "transformer": {
+          "공격_판정": "danger",
+          "대조군_판정": "safe"
+        }
+      },
       "PDF_점수": 0.957641,
       "PDF_판정": "danger"
     },
@@ -1099,6 +1879,16 @@
       "대조군_점수": 0.896075,
       "대조군_판정": "danger",
       "순위_역전": false,
+      "모델별": {
+        "tfidf": {
+          "공격_판정": "danger",
+          "대조군_판정": "danger"
+        },
+        "transformer": {
+          "공격_판정": "danger",
+          "대조군_판정": "safe"
+        }
+      },
       "PDF_점수": 0.9957,
       "PDF_판정": "danger"
     },
@@ -1113,6 +1903,16 @@
       "대조군_점수": 0.67069,
       "대조군_판정": "suspicious",
       "순위_역전": false,
+      "모델별": {
+        "tfidf": {
+          "공격_판정": "danger",
+          "대조군_판정": "suspicious"
+        },
+        "transformer": {
+          "공격_판정": "danger",
+          "대조군_판정": "safe"
+        }
+      },
       "PDF_점수": 0.906117,
       "PDF_판정": "danger"
     },
@@ -1127,6 +1927,16 @@
       "대조군_점수": 0.803851,
       "대조군_판정": "danger",
       "순위_역전": false,
+      "모델별": {
+        "tfidf": {
+          "공격_판정": "danger",
+          "대조군_판정": "danger"
+        },
+        "transformer": {
+          "공격_판정": "danger",
+          "대조군_판정": "safe"
+        }
+      },
       "PDF_점수": 0.975603,
       "PDF_판정": "danger"
     },
@@ -1141,6 +1951,16 @@
       "대조군_점수": 0.678352,
       "대조군_판정": "suspicious",
       "순위_역전": false,
+      "모델별": {
+        "tfidf": {
+          "공격_판정": "danger",
+          "대조군_판정": "suspicious"
+        },
+        "transformer": {
+          "공격_판정": "danger",
+          "대조군_판정": "safe"
+        }
+      },
       "PDF_점수": 0.958055,
       "PDF_판정": "danger"
     },
@@ -1155,6 +1975,16 @@
       "대조군_점수": 0.714539,
       "대조군_판정": "suspicious",
       "순위_역전": false,
+      "모델별": {
+        "tfidf": {
+          "공격_판정": "danger",
+          "대조군_판정": "suspicious"
+        },
+        "transformer": {
+          "공격_판정": "danger",
+          "대조군_판정": "safe"
+        }
+      },
       "PDF_점수": 0.991082,
       "PDF_판정": "danger"
     },
@@ -1169,6 +1999,16 @@
       "대조군_점수": 0.728915,
       "대조군_판정": "suspicious",
       "순위_역전": false,
+      "모델별": {
+        "tfidf": {
+          "공격_판정": "danger",
+          "대조군_판정": "suspicious"
+        },
+        "transformer": {
+          "공격_판정": "danger",
+          "대조군_판정": "safe"
+        }
+      },
       "PDF_점수": 0.965183,
       "PDF_판정": "danger"
     },
@@ -1183,6 +2023,16 @@
       "대조군_점수": 0.68253,
       "대조군_판정": "suspicious",
       "순위_역전": false,
+      "모델별": {
+        "tfidf": {
+          "공격_판정": "danger",
+          "대조군_판정": "suspicious"
+        },
+        "transformer": {
+          "공격_판정": "danger",
+          "대조군_판정": "safe"
+        }
+      },
       "PDF_점수": 0.954486,
       "PDF_판정": "danger"
     },
@@ -1197,6 +2047,16 @@
       "대조군_점수": 0.713156,
       "대조군_판정": "suspicious",
       "순위_역전": false,
+      "모델별": {
+        "tfidf": {
+          "공격_판정": "danger",
+          "대조군_판정": "suspicious"
+        },
+        "transformer": {
+          "공격_판정": "danger",
+          "대조군_판정": "safe"
+        }
+      },
       "PDF_점수": 0.991513,
       "PDF_판정": "danger"
     },
@@ -1211,6 +2071,16 @@
       "대조군_점수": 0.743059,
       "대조군_판정": "suspicious",
       "순위_역전": false,
+      "모델별": {
+        "tfidf": {
+          "공격_판정": "danger",
+          "대조군_판정": "suspicious"
+        },
+        "transformer": {
+          "공격_판정": "danger",
+          "대조군_판정": "safe"
+        }
+      },
       "PDF_점수": 0.959498,
       "PDF_판정": "danger"
     },
@@ -1225,6 +2095,16 @@
       "대조군_점수": 0.686386,
       "대조군_판정": "suspicious",
       "순위_역전": false,
+      "모델별": {
+        "tfidf": {
+          "공격_판정": "danger",
+          "대조군_판정": "suspicious"
+        },
+        "transformer": {
+          "공격_판정": "danger",
+          "대조군_판정": "safe"
+        }
+      },
       "PDF_점수": 0.955385,
       "PDF_판정": "danger"
     },
@@ -1239,6 +2119,16 @@
       "대조군_점수": 0.809203,
       "대조군_판정": "danger",
       "순위_역전": false,
+      "모델별": {
+        "tfidf": {
+          "공격_판정": "danger",
+          "대조군_판정": "danger"
+        },
+        "transformer": {
+          "공격_판정": "danger",
+          "대조군_판정": "safe"
+        }
+      },
       "PDF_점수": 0.977506,
       "PDF_판정": "danger"
     },
@@ -1253,6 +2143,16 @@
       "대조군_점수": 0.715724,
       "대조군_판정": "suspicious",
       "순위_역전": false,
+      "모델별": {
+        "tfidf": {
+          "공격_판정": "danger",
+          "대조군_판정": "suspicious"
+        },
+        "transformer": {
+          "공격_판정": "danger",
+          "대조군_판정": "safe"
+        }
+      },
       "PDF_점수": 0.971071,
       "PDF_판정": "danger"
     },
@@ -1267,6 +2167,16 @@
       "대조군_점수": 0.708703,
       "대조군_판정": "suspicious",
       "순위_역전": false,
+      "모델별": {
+        "tfidf": {
+          "공격_판정": "danger",
+          "대조군_판정": "suspicious"
+        },
+        "transformer": {
+          "공격_판정": "danger",
+          "대조군_판정": "safe"
+        }
+      },
       "PDF_점수": 0.992544,
       "PDF_판정": "danger"
     },
@@ -1281,6 +2191,16 @@
       "대조군_점수": 0.708621,
       "대조군_판정": "suspicious",
       "순위_역전": false,
+      "모델별": {
+        "tfidf": {
+          "공격_판정": "danger",
+          "대조군_판정": "suspicious"
+        },
+        "transformer": {
+          "공격_판정": "danger",
+          "대조군_판정": "safe"
+        }
+      },
       "PDF_점수": 0.943865,
       "PDF_판정": "danger"
     },
@@ -1295,6 +2215,16 @@
       "대조군_점수": 0.688521,
       "대조군_판정": "suspicious",
       "순위_역전": false,
+      "모델별": {
+        "tfidf": {
+          "공격_판정": "danger",
+          "대조군_판정": "suspicious"
+        },
+        "transformer": {
+          "공격_판정": "danger",
+          "대조군_판정": "safe"
+        }
+      },
       "PDF_점수": 0.957906,
       "PDF_판정": "danger"
     },
@@ -1309,6 +2239,16 @@
       "대조군_점수": 0.673625,
       "대조군_판정": "suspicious",
       "순위_역전": false,
+      "모델별": {
+        "tfidf": {
+          "공격_판정": "danger",
+          "대조군_판정": "suspicious"
+        },
+        "transformer": {
+          "공격_판정": "danger",
+          "대조군_판정": "safe"
+        }
+      },
       "PDF_점수": 0.958253,
       "PDF_판정": "danger"
     },
@@ -1323,6 +2263,16 @@
       "대조군_점수": 0.719578,
       "대조군_판정": "suspicious",
       "순위_역전": false,
+      "모델별": {
+        "tfidf": {
+          "공격_판정": "danger",
+          "대조군_판정": "suspicious"
+        },
+        "transformer": {
+          "공격_판정": "danger",
+          "대조군_판정": "safe"
+        }
+      },
       "PDF_점수": 0.987387,
       "PDF_판정": "danger"
     },
@@ -1337,6 +2287,16 @@
       "대조군_점수": 0.722418,
       "대조군_판정": "suspicious",
       "순위_역전": false,
+      "모델별": {
+        "tfidf": {
+          "공격_판정": "danger",
+          "대조군_판정": "suspicious"
+        },
+        "transformer": {
+          "공격_판정": "danger",
+          "대조군_판정": "safe"
+        }
+      },
       "PDF_점수": 0.958384,
       "PDF_판정": "danger"
     },
@@ -1351,6 +2311,16 @@
       "대조군_점수": 0.796106,
       "대조군_판정": "danger",
       "순위_역전": false,
+      "모델별": {
+        "tfidf": {
+          "공격_판정": "danger",
+          "대조군_판정": "danger"
+        },
+        "transformer": {
+          "공격_판정": "danger",
+          "대조군_판정": "safe"
+        }
+      },
       "PDF_점수": 0.968946,
       "PDF_판정": "danger"
     },
@@ -1365,6 +2335,16 @@
       "대조군_점수": 0.83225,
       "대조군_판정": "danger",
       "순위_역전": false,
+      "모델별": {
+        "tfidf": {
+          "공격_판정": "danger",
+          "대조군_판정": "danger"
+        },
+        "transformer": {
+          "공격_판정": "danger",
+          "대조군_판정": "safe"
+        }
+      },
       "PDF_점수": 0.974288,
       "PDF_판정": "danger"
     },
@@ -1379,6 +2359,16 @@
       "대조군_점수": 0.731647,
       "대조군_판정": "suspicious",
       "순위_역전": false,
+      "모델별": {
+        "tfidf": {
+          "공격_판정": "danger",
+          "대조군_판정": "suspicious"
+        },
+        "transformer": {
+          "공격_판정": "danger",
+          "대조군_판정": "safe"
+        }
+      },
       "PDF_점수": 0.990671,
       "PDF_판정": "danger"
     },
@@ -1393,6 +2383,16 @@
       "대조군_점수": 0.667864,
       "대조군_판정": "suspicious",
       "순위_역전": false,
+      "모델별": {
+        "tfidf": {
+          "공격_판정": "danger",
+          "대조군_판정": "suspicious"
+        },
+        "transformer": {
+          "공격_판정": "danger",
+          "대조군_판정": "safe"
+        }
+      },
       "PDF_점수": 0.987959,
       "PDF_판정": "danger"
     },
@@ -1407,6 +2407,16 @@
       "대조군_점수": 0.7325,
       "대조군_판정": "suspicious",
       "순위_역전": false,
+      "모델별": {
+        "tfidf": {
+          "공격_판정": "danger",
+          "대조군_판정": "suspicious"
+        },
+        "transformer": {
+          "공격_판정": "danger",
+          "대조군_판정": "safe"
+        }
+      },
       "PDF_점수": 0.95738,
       "PDF_판정": "danger"
     },
@@ -1421,6 +2431,16 @@
       "대조군_점수": 0.767715,
       "대조군_판정": "danger",
       "순위_역전": false,
+      "모델별": {
+        "tfidf": {
+          "공격_판정": "danger",
+          "대조군_판정": "danger"
+        },
+        "transformer": {
+          "공격_판정": "danger",
+          "대조군_판정": "safe"
+        }
+      },
       "PDF_점수": 0.991007,
       "PDF_판정": "danger"
     },
@@ -1435,6 +2455,16 @@
       "대조군_점수": 0.727315,
       "대조군_판정": "suspicious",
       "순위_역전": false,
+      "모델별": {
+        "tfidf": {
+          "공격_판정": "danger",
+          "대조군_판정": "suspicious"
+        },
+        "transformer": {
+          "공격_판정": "danger",
+          "대조군_판정": "safe"
+        }
+      },
       "PDF_점수": 0.992943,
       "PDF_판정": "danger"
     },
@@ -1449,6 +2479,16 @@
       "대조군_점수": 0.734125,
       "대조군_판정": "suspicious",
       "순위_역전": false,
+      "모델별": {
+        "tfidf": {
+          "공격_판정": "danger",
+          "대조군_판정": "suspicious"
+        },
+        "transformer": {
+          "공격_판정": "danger",
+          "대조군_판정": "safe"
+        }
+      },
       "PDF_점수": 0.993219,
       "PDF_판정": "danger"
     }
