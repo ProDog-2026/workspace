@@ -154,10 +154,16 @@ class DynamicService:
         self, owner, *, mail=None, detection=None, mode=None, email=None, retry=False, manual=False
     ):
         options, prompt_hash = await self.options(owner)
+        pdf_texts = mail.get("pdf_texts", []) if mail and not manual else []
+        pdf_context_hash = fingerprint(pdf_texts) if pdf_texts else None
         key = None
         if mail:
             parts = [mail["id"], mail["body_hash"], options, prompt_hash]
-            key = fingerprint(parts + ["manual"] if manual else parts)
+            if manual:
+                parts.append("manual")
+            elif pdf_context_hash:
+                parts.append(pdf_context_hash)
+            key = fingerprint(parts)
         base_key = key
         async with self.lock:
             if owner in self.revoked_owners:
@@ -195,6 +201,7 @@ class DynamicService:
                 "warnings": mail.get("warnings", []) if mail else [],
                 "truncated": mail.get("truncated", False) if mail else False,
                 "attachments_count": len(mail.get("attachments", [])) if mail else 0,
+                "pdf_attachments_count": len(pdf_texts),
                 "static_detection": detection,
                 "observation": "unknown",
                 "error_code": None,
@@ -204,17 +211,26 @@ class DynamicService:
                 "key": key,
                 "base_key": base_key,
             }
+            if pdf_context_hash:
+                data["pdf_context_hash"] = pdf_context_hash
             job, created = self.db.insert(owner, data, key)
             if created:
-                self.mail_memory[job["id"]] = self.email_input(mail) if mail else email
+                self.mail_memory[job["id"]] = (
+                    self.email_input(mail, pdf_texts=pdf_texts) if mail else email
+                )
             self.wake.set()
             return self.db.public(job)
 
     @staticmethod
-    def email_input(mail):
+    def email_input(mail, *, pdf_texts=()):
         # Preserve raw HTML/comments and distinguish them from the fixed system prompt.
         body = mail.get("analysis_text") or "\n".join(
             filter(None, (mail.get("text_plain"), mail.get("text_html")))
+        )
+        # The MIME parser bounds both body and PDF text before they reach the queue.
+        body += "".join(
+            f"\n\nUNTRUSTED PDF ATTACHMENT {index}\n{text}"
+            for index, text in enumerate(pdf_texts, start=1)
         )
         return {
             "subject": mail.get("subject", ""),
@@ -323,11 +339,18 @@ class DynamicService:
                 mail = await self.load_mail(
                     {"account_id": job["owner"], "mode": job["mode"]}, job["mail_id"]
                 )
-                if mail["body_hash"] != job["body_hash"]:
+                # Older jobs never received PDF text. Replays must keep the original input.
+                pdf_context_hash = job.get("pdf_context_hash")
+                pdf_texts = mail.get("pdf_texts", []) if pdf_context_hash else []
+                if mail["body_hash"] != job["body_hash"] or (
+                    pdf_context_hash and fingerprint(pdf_texts) != pdf_context_hash
+                ):
                     raise ConnectorError(
-                        "mail_changed", "메일 내용이 바뀌었습니다. 다시 검사하세요.", 409
+                        "mail_changed",
+                        "메일 내용 또는 PDF 추출 결과가 바뀌었습니다. 다시 검사하세요.",
+                        409,
                     )
-                email = self.email_input(mail)
+                email = self.email_input(mail, pdf_texts=pdf_texts)
             if email is None:
                 raise ConnectorError(
                     "experiment_interrupted",

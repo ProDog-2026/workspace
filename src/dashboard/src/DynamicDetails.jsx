@@ -14,12 +14,17 @@ function Fields({ fields }) {
 
 export function DynamicResult({ job, result, onEvidence }) {
   const data = result ? view.describeResult(result) : null
+  const pdfCount = job.pdf_attachments_count ?? 0
+  const excludedCount = (job.attachments_count ?? 0) - pdfCount
+  const limits = [job.truncated && '본문 잘림', excludedCount > 0 && `첨부파일 ${excludedCount}개 내용 제외`,
+    ...(job.warnings ?? []).filter((warning) => warning !== 'attachment_content_not_analyzed')].filter(Boolean)
   return <section className="panel">
     <div className="panel-head"><h2>분석 결과</h2><span className={`dynamic-badge ${job.observation === 'observed' ? 'alert' : ''}`}>{dynamicLabel(job)}</span></div>
     <div className="panel-body dynamic-stack">
-      {job.static_detection && <p className="dynamic-notice">1차 판정: <b>{job.static_detection.verdict === 'danger' ? '위험' : '의심'}</b> · {job.static_detection.static_score}점. 동적 검사 결과와 별도로 유지합니다.</p>}
+      {job.static_detection && <p className="dynamic-notice">1차 판정{job.static_detection.source === 'pdf' ? ' (PDF)' : ''} · <b>{job.static_detection.verdict === 'danger' ? '위험' : '의심'}</b> · {job.static_detection.static_score}점</p>}
       {job.source === 'gmail_manual' && <p className="dynamic-notice">사용자가 선택한 메일의 수동 검사입니다. 1차 분류는 수행하지 않았습니다.</p>}
-      {(job.truncated || job.attachments_count > 0 || job.warnings?.length > 0) && <p className="dynamic-notice">일부만 검사: {job.truncated ? '본문 잘림 · ' : ''}{job.attachments_count ? `첨부파일 ${job.attachments_count}개 내용 제외 · ` : ''}{job.warnings?.join(', ')}</p>}
+      {pdfCount > 0 && <p className="note">PDF 첨부파일 {pdfCount}개에서 추출한 텍스트를 검사 입력에 포함했어요.</p>}
+      {limits.length > 0 && <p className="dynamic-notice">일부만 검사 · {limits.join(' · ')}</p>}
       {job.error_code && <p role="status" className="dynamic-notice">{dynamicError(job.error_code)}</p>}
       {!data ? <p className="muted">검사가 끝나면 요약과 확인된 증거가 여기에 표시됩니다.</p> : <>
         <div className="dynamic-metrics">

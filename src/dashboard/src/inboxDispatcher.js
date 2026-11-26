@@ -6,7 +6,7 @@ export function createInboxDispatcher(submit, onResult, onError) {
     while (!closed && waiting.length) {
       const row = waiting.shift()
       try { const result = await submit(row); if (!closed) onResult(row, result) }
-      catch (error) { if (!closed) onError(error) }
+      catch (error) { if (!closed) onError(error, row) }
     }
   }
   return {

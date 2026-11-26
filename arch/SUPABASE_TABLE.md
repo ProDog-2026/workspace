@@ -76,7 +76,7 @@ Google 모드의 로그인과 사용자별 저장 구현은 [사용자 분리 �
 다음 순서대로 판정한다. `attachment_content_not_analyzed`를 포함한 경고는 전체 메일을 분석하지 못했다는 뜻이므로 `incomplete`에 포함한다.
 
 1. `failed`: Gmail 요청 자체가 실패했거나, 파서 출력의 `body_hash`가 NULL이라 RAW 본문을 받아들이지 못한 경우. 메일 ID를 알 수 없으면 메일 행을 만들지 않고 수집 작업 오류로 기록한다.
-2. `incomplete`: `body_hash`가 있고 `truncated=true`, `warnings`가 비어 있지 않음, 또는 `attachments`가 비어 있지 않음 중 하나라도 참인 경우.
+2. `incomplete`: `body_hash`가 있고, 본문이 잘렸거나 경고가 있거나 텍스트 추출에 성공하지 않은 첨부가 하나라도 있는 경우. 첨부의 PDF 상태는 `pdf_status=parsed`일 때만 텍스트 추출 성공으로 본다.
 3. `complete`: 위 두 경우가 모두 아닌 경우. 수집 완료는 분석 성공이나 메일 안전을 뜻하지 않는다.
 
 DB에는 `fetch_status` 기본값을 두지 않았다. 통합 서버가 위 규칙을 계산해 명시적으로 넣어야 하며, 누락되거나 해시·경고·첨부·잘림 값과 모순되면 INSERT가 실패한다.

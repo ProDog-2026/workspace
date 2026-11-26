@@ -3,13 +3,17 @@ const LABELS = { queued: '검사 대기', submitting: '실행 준비', running: 
   unreachable: '연결 확인 필요', stopped: '중지됨', failed: '검사 실패', incomplete: '검사 미완료',
   unavailable: '동적 검사 연결 필요', not_configured: '모델 미설정' }
 export const isActive = (job) => ACTIVE.has(job?.status)
-export const eligible = (mail) => mail.detection?.status === 'ok' && ['suspicious', 'danger'].includes(mail.detection.verdict)
+export const canStartDynamic = (row) => !row.pending && row.status !== 'failed' && ['suspicious', 'danger'].includes(row.verdict)
+export const isLinkedDynamicJob = (job) => job?.source === 'gmail'
+export const matchesDynamicJob = (row, job) => Boolean(row.body_hash && job && job.mail_id === row.id && job.body_hash === row.body_hash)
 
-export function withLatestDynamic(row, job) {
-  if (!job || job.mail_id !== row.id || job.body_hash !== row.body_hash) return row
-  const current = row.dynamic
-  if (current && (job.created_at < current.created_at ||
-    (job.id === current.id && job.updated_at <= current.updated_at))) return row
+export function mergeDynamicJob(row, job) {
+  if (!matchesDynamicJob(row, job)) return row
+  const previous = row.dynamic
+  if (previous && isLinkedDynamicJob(previous) !== isLinkedDynamicJob(job)) {
+    return isLinkedDynamicJob(job) ? { ...row, dynamic: job } : row
+  }
+  if (previous && (previous.created_at > job.created_at || (previous.id === job.id && previous.updated_at >= job.updated_at))) return row
   return { ...row, dynamic: job }
 }
 
@@ -24,10 +28,10 @@ const NOT_SAFE = '안전하다는 뜻은 아니에요.'
 export function dynamicStatus(row) {
   const job = row.dynamic
   if (!job) {
-    const runnable = !row.pending && row.status !== 'failed' && ['suspicious', 'danger'].includes(row.verdict)
+    const runnable = canStartDynamic(row)
     const note = row.pending || row.status === 'failed' ? '1차 검사 결과가 없어 동적 검사를 시작하지 않았어요.'
-      : runnable ? `아직 실행하지 않았어요. 자동 전달이 꺼져 있다면 동적 검사 페이지에서 실행하세요. ${NOT_SAFE}`
-      : '1차 검사에서 의심·위험이 아니라 동적 검사 대상이 아니에요.'
+      : runnable ? `아직 실행하지 않았어요. ${NOT_SAFE}`
+      : '메일 본문 정적 검사에서 판정이 끝났어요. 동적 검사는 본문이 의심·위험인 메일에 실행해요.'
     return { phase: 'none', label: '실행 안 함', note, runnable }
   }
   const label = dynamicLabel(job)
@@ -46,6 +50,7 @@ export const dynamicError = (code) => ({
   dynamic_storage_error: '증거 저장에 실패했습니다. 실험 서버에서 컨테이너를 확인하세요.',
   docker_runtime_not_configured: 'Docker 실행 환경이 설정되지 않았습니다. 실험 서버를 준비한 뒤 다시 검사하세요.',
   prompt_changed: '대기 중 프롬프트가 바뀌었습니다. 현재 설정으로 다시 검사하세요.',
+  mail_changed: '메일 내용이나 PDF 추출 결과가 달라졌습니다. 다시 검사하세요.',
   experiment_interrupted: '서버가 재시작돼 대기 중이던 실험 본문이 사라졌습니다. 다시 입력하세요.',
   run_not_found: '실험 서버에 이 실행이 없습니다. 서버 재시작·기록 삭제 여부를 확인하세요.',
   dynamic_invalid_response: '실험 서버의 결과를 해석할 수 없습니다.',

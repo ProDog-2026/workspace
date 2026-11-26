@@ -287,7 +287,7 @@ class Store:
             )
             return new
 
-    def save_metadata(self, account_id: str, metadata: dict):
+    def save_metadata(self, account_id: str, metadata: dict, *, preserve_scan: bool = False):
         # Explicit allowlist prevents accidental future persistence of raw/analysis body fields.
         keys = {
             "id",
@@ -309,8 +309,14 @@ class Store:
             conn.execute(
                 "INSERT INTO mails VALUES (?, ?, ?, ?) "
                 "ON CONFLICT(account_id, gmail_message_id) DO UPDATE SET "
-                "metadata_json=excluded.metadata_json, updated_at=excluded.updated_at",
-                (account_id, safe["id"], json.dumps(safe, ensure_ascii=False), time.time()),
+                "metadata_json=excluded.metadata_json, updated_at=excluded.updated_at "
+                "WHERE NOT ? OR NOT EXISTS (SELECT 1 FROM mail_scans "
+                "WHERE account_id=excluded.account_id "
+                "AND gmail_message_id=excluded.gmail_message_id)",
+                (
+                    account_id, safe["id"], json.dumps(safe, ensure_ascii=False),
+                    time.time(), preserve_scan,
+                ),
             )
 
     def save_scan(self, account_id: str, message_id: str, model_key: str, detection):

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { dynamicLabel, dynamicStatus, isActive, eligible, withLatestDynamic } from '../src/dynamicState.js'
-import { toRow, scoreReason } from '../src/api.js'
+import { canStartDynamic, dynamicLabel, dynamicStatus, isActive, mergeDynamicJob } from '../src/dynamicState.js'
+import { pdfResultLabel, scoreReason, toRow } from '../src/api.js'
 import { stateOf } from '../src/inboxState.js'
 import { createInboxDispatcher } from '../src/inboxDispatcher.js'
 
@@ -30,11 +30,11 @@ test('a suspicious mail is displayed as danger as soon as dynamic evidence is ob
 test('a late handoff response cannot replace a newer or different mail result', () => {
   const pending = { id: 'latest', mail_id: 'mail', body_hash: 'hash', created_at: 2, updated_at: 2, status: 'running' }
   const observed = { ...pending, updated_at: 3, status: 'completed', observation: 'observed' }
-  const row = withLatestDynamic({ id: 'mail', body_hash: 'hash', status: 'ok', verdict: 'suspicious', dynamic: pending }, observed)
+  const row = mergeDynamicJob({ id: 'mail', body_hash: 'hash', status: 'ok', verdict: 'suspicious', dynamic: pending }, observed)
   assert.equal(stateOf(row), 'danger')
-  assert.equal(withLatestDynamic(row, pending), row)
-  assert.equal(withLatestDynamic(row, { ...pending, id: 'older', created_at: 1, updated_at: 4 }), row)
-  assert.equal(withLatestDynamic(row, { ...observed, body_hash: 'different', created_at: 4 }), row)
+  assert.equal(mergeDynamicJob(row, pending), row)
+  assert.equal(mergeDynamicJob(row, { ...pending, id: 'older', created_at: 1, updated_at: 4 }), row)
+  assert.equal(mergeDynamicJob(row, { ...observed, body_hash: 'different', created_at: 4 }), row)
 })
 
 test('negative dynamic observation does not erase a dangerous static verdict', () => {
@@ -46,16 +46,73 @@ test('negative dynamic observation does not erase a dangerous static verdict', (
   assert.equal(row.final_score, 91)
   assert.equal(dynamicLabel(row.dynamic), '이상 행동 미관찰')
 })
+
+test('only a current job for the same message body updates the dynamic result', () => {
+  const row = toRow({ id: 'mail', body_hash: 'hash', warnings: [], attachments: [],
+    detection: { status: 'ok', verdict: 'danger', static_score: 91 } })
+  const job = { id: 'job', mail_id: 'mail', body_hash: 'hash', status: 'failed', created_at: 2, updated_at: 3 }
+  assert.equal(mergeDynamicJob(row, { ...job, mail_id: 'other' }), row)
+  assert.equal(mergeDynamicJob(row, { ...job, body_hash: 'old' }), row)
+  const merged = mergeDynamicJob(row, job)
+  assert.equal(merged.verdict, 'danger')
+  assert.equal(merged.static_score, 91)
+  assert.equal(dynamicStatus(merged).phase, 'failed')
+  assert.equal(mergeDynamicJob(merged, { ...job, id: 'old', created_at: 1 }), merged)
+  assert.equal(mergeDynamicJob(merged, { ...job, status: 'running', updated_at: 2 }), merged)
+})
+
+test('a standalone experiment cannot replace a linked result for the same mail', () => {
+  const row = { id: 'mail', body_hash: 'hash' }
+  const linked = { id: 'linked', source: 'gmail', mail_id: 'mail', body_hash: 'hash', created_at: 1 }
+  const manual = { ...linked, id: 'manual', source: 'gmail_manual', created_at: 2 }
+  const both = mergeDynamicJob({ ...row, dynamic: manual }, linked)
+  assert.equal(both.dynamic, linked)
+  assert.equal(mergeDynamicJob(both, manual), both)
+})
+
+test('only excluded attachments make the static result incomplete', () => {
+  const pdf = { filename: 'agenda.pdf', pdf_status: 'parsed' }
+  const mail = { id: 'mail', body_hash: 'hash', warnings: ['attachment_content_not_analyzed'],
+    attachments: [pdf], detection: { status: 'ok', verdict: 'suspicious', source: 'pdf', probability: 0.08,
+      static_score: 8, thresholds: { suspicious: 5, danger: 41.4 } } }
+  const parsed = toRow(mail)
+  assert.equal(parsed.status, 'ok')
+  assert.deepEqual(parsed.attachments, [pdf])
+  assert.match(scoreReason(parsed), /^PDF 정적 8%/)
+  const partial = toRow({ ...mail, attachments: [pdf, { filename: 'notes.pdf', pdf_status: 'encrypted' }, { filename: 'notes.zip' }] })
+  assert.equal(partial.status, 'incomplete')
+  assert.equal(partial.verdict, 'suspicious')
+  assert.deepEqual(partial.missing_parts, ['첨부파일 2개 (내용 검사 안 함)'])
+})
+
+test('PDF results are shown separately for the matching attachment', () => {
+  const results = [
+    { attachment_index: 1, status: 'ok', verdict: 'danger', static_score: 80 },
+    { attachment_index: 2, status: 'failed' },
+  ]
+  const row = toRow({ id: 'mail', body_hash: 'hash', warnings: [],
+    attachments: [{ filename: 'notes.zip' }, { filename: 'one.pdf', pdf_status: 'parsed' }, { filename: 'two.pdf', pdf_status: 'parsed' }],
+    detection: { status: 'ok', verdict: 'safe', static_score: 2, pdf_results: results } })
+  assert.equal(row.verdict, 'safe')
+  assert.deepEqual(row.pdf_results, results)
+  assert.equal(row.status, 'incomplete')
+  assert.ok(row.missing_parts.includes('PDF 1개 (정적 검사 실패)'))
+  assert.equal(pdfResultLabel(row.pdf_results, 1), 'PDF 정적 검사 · 위험 · 80점')
+  assert.equal(pdfResultLabel(row.pdf_results, 2), 'PDF 정적 검사 실패')
+  assert.equal(pdfResultLabel(row.pdf_results, 0), 'PDF 정적 검사 결과 없음')
+})
 test('incomplete execution is not described as an all-clear', () => {
   assert.equal(dynamicLabel({ status: 'incomplete', observation: 'unknown' }), '검사 미완료')
   assert.equal(isActive({ status: 'unreachable' }), true)
   assert.equal(isActive({ status: 'completed' }), false)
 })
-test('automatic handoff requires a successful suspicious or danger result', () => {
-  assert.equal(eligible({ detection: { status: 'ok', verdict: 'suspicious' } }), true)
-  assert.equal(eligible({ detection: { status: 'failed', verdict: 'danger' } }), false)
-  assert.equal(eligible({ detection: { status: 'ok', verdict: 'safe' } }), false)
-  assert.equal(eligible({ detection: null }), false)
+test('linked dynamic checks require a successful suspicious or danger result', () => {
+  const row = { verdict: 'suspicious', status: 'ok', pending: false }
+  assert.equal(canStartDynamic(row), true)
+  assert.equal(canStartDynamic({ ...row, verdict: 'safe' }), false)
+  assert.equal(canStartDynamic({ ...row, verdict: 'danger' }), true)
+  assert.equal(canStartDynamic({ ...row, status: 'failed' }), false)
+  assert.equal(canStartDynamic({ ...row, pending: true }), false)
 })
 
 test('inbox updates during submission do not drop later mails or duplicate the first', async () => {
@@ -79,8 +136,9 @@ test('inbox updates during submission do not drop later mails or duplicate the f
 test('mail detail separates not run, running, failed and never reads as safe', () => {
   const row = (verdict, dynamic = null) => ({ verdict, pending: false, status: 'ok', dynamic })
   assert.equal(dynamicStatus(row('safe')).phase, 'none')
-  assert.match(dynamicStatus(row('safe')).note, /대상이 아니에요/)
+  assert.match(dynamicStatus(row('safe')).note, /본문 정적 검사에서 판정이 끝났어요/)
   assert.match(dynamicStatus(row('danger')).note, /아직 실행하지 않았어요/)
+  assert.match(dynamicStatus(row('suspicious')).note, /아직 실행하지 않았어요/)
   assert.match(dynamicStatus({ ...row('danger'), status: 'failed' }).note, /1차 검사 결과가 없어/)
   assert.equal(dynamicStatus(row('danger', { status: 'running' })).phase, 'active')
   assert.equal(dynamicStatus(row('danger', { status: 'unreachable' })).phase, 'active')
