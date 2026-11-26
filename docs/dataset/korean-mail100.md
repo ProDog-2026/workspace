@@ -71,7 +71,8 @@ KoPI test 오탐률은 0.0133에서 0.0241로 나빠졌다. 그래서 이 증강
 
 공격 메일마다 정상 메일 2종을 만들었다. 생성 스크립트는
 [`../../src/detector/scripts/build_mail100_controls.py`](../../src/detector/scripts/build_mail100_controls.py)
-(pypdf 필요)이고, 결과는 팀 공유 폴더 `한국어_정상메일_200개_PDF_CSV`에 둔다(레포에는 올리지 않음).
+(pypdf 필요)이고, 메일·PDF 파일은 팀 공유 폴더 `한국어_정상메일_200개_PDF_CSV`에 둔다(26MB라 레포에는
+올리지 않음). 목록 CSV는 [`korean-mail100-benign.csv`](korean-mail100-benign.csv)에 있다.
 
 | 유형 | 메일 HTML | 첨부 PDF |
 | --- | --- | --- |
