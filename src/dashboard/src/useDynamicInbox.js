@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { dynamic, gmail } from './api'
-import { isActive } from './dynamicState'
+import { isActive, withLatestDynamic } from './dynamicState'
 import { createInboxDispatcher } from './inboxDispatcher'
 
 export default function useDynamicInbox(rows, setRows) {
@@ -11,7 +11,7 @@ export default function useDynamicInbox(rows, setRows) {
     let active = true
     dispatcher.current = createInboxDispatcher(
       (row) => dynamic(`/mail/${encodeURIComponent(row.id)}`, { method: 'POST' }),
-      (row, data) => { if (data.job) setRows((prev) => prev?.map((r) => r.id === row.id ? { ...r, dynamic: data.job } : r)) },
+      (_, { job }) => { if (job) setRows((prev) => prev?.map((row) => withLatestDynamic(row, job))) },
       (error) => setNotice(error.message),
     )
     gmail('/api/session').then(() => dynamic('/settings')).then((value) => {
@@ -40,7 +40,7 @@ export default function useDynamicInbox(rows, setRows) {
         if (stopped) return
         setRows((prev) => prev?.map((row) => {
           const job = jobs.find((j) => j.mail_id === row.id && j.body_hash === row.body_hash)
-          return job ? { ...row, dynamic: job } : row
+          return withLatestDynamic(row, job)
         }))
       } catch (error) { if (!stopped) setNotice(error.message) }
       if (!stopped) timer = setTimeout(refresh, 1500)

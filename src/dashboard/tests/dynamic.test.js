@@ -1,14 +1,48 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { dynamicLabel, dynamicStatus, isActive, eligible } from '../src/dynamicState.js'
-import { toRow } from '../src/api.js'
+import { dynamicLabel, dynamicStatus, isActive, eligible, withLatestDynamic } from '../src/dynamicState.js'
+import { toRow, scoreReason } from '../src/api.js'
+import { stateOf } from '../src/inboxState.js'
 import { createInboxDispatcher } from '../src/inboxDispatcher.js'
+
+test('a suspicious mail is displayed as danger as soon as dynamic evidence is observed', () => {
+  const message = { id: 'mail', body_hash: 'hash', warnings: [], attachments: [],
+    detection: { status: 'ok', verdict: 'suspicious', static_score: 6, probability: 0.06,
+      thresholds: { suspicious: 5, danger: 41.4 } } }
+  const row = toRow(message)
+  assert.equal(stateOf(row), 'suspicious')
+
+  for (const status of ['completed', 'incomplete']) {
+    const dynamic = { status, observation: 'observed' }
+    const fromList = toRow({ ...message, dynamic })
+    assert.equal(stateOf(fromList), 'danger')
+    assert.equal(stateOf({ ...row, dynamic }), 'danger')
+    assert.equal(fromList.verdict, 'suspicious')
+    assert.equal(fromList.static_score, 6)
+    assert.match(scoreReason(fromList), /정적 6%.*의심/)
+  }
+
+  assert.equal(stateOf({ ...row, dynamic: { status: 'completed', observation: 'not_observed' } }), 'suspicious')
+  assert.equal(stateOf({ ...row, dynamic: { status: 'incomplete', observation: 'unknown' } }), 'suspicious')
+  assert.equal(stateOf({ ...row, verdict: 'safe', dynamic: { observation: 'observed' } }), 'safe')
+})
+
+test('a late handoff response cannot replace a newer or different mail result', () => {
+  const pending = { id: 'latest', mail_id: 'mail', body_hash: 'hash', created_at: 2, updated_at: 2, status: 'running' }
+  const observed = { ...pending, updated_at: 3, status: 'completed', observation: 'observed' }
+  const row = withLatestDynamic({ id: 'mail', body_hash: 'hash', status: 'ok', verdict: 'suspicious', dynamic: pending }, observed)
+  assert.equal(stateOf(row), 'danger')
+  assert.equal(withLatestDynamic(row, pending), row)
+  assert.equal(withLatestDynamic(row, { ...pending, id: 'older', created_at: 1, updated_at: 4 }), row)
+  assert.equal(withLatestDynamic(row, { ...observed, body_hash: 'different', created_at: 4 }), row)
+})
 
 test('negative dynamic observation does not erase a dangerous static verdict', () => {
   const row = toRow({ id: 'mail', body_hash: 'hash', warnings: [], attachments: [],
     detection: { status: 'ok', verdict: 'danger', static_score: 91 },
     dynamic: { id: 'job', status: 'completed', observation: 'not_observed' } })
   assert.equal(row.verdict, 'danger')
+  assert.equal(stateOf(row), 'danger')
   assert.equal(row.final_score, 91)
   assert.equal(dynamicLabel(row.dynamic), '이상 행동 미관찰')
 })
@@ -65,8 +99,7 @@ test('mail detail separates not run, running, failed and never reads as safe', (
   assert.doesNotMatch(seen.note, /지시를 따라/)
 })
 
-test('score reason explains the verdict with the model thresholds', async () => {
-  const { scoreReason } = await import('../src/api.js')
+test('score reason explains the verdict with the model thresholds', () => {
   const base = { id: 'm', body_hash: 'h', warnings: [], attachments: [] }
   const row = (verdict, probability, dynamic) => toRow({ ...base, dynamic,
     detection: { status: 'ok', verdict, probability, static_score: Math.round(probability * 100), thresholds: { suspicious: 5, danger: 41.4 } } })

@@ -4,6 +4,15 @@ const LABELS = { queued: '검사 대기', submitting: '실행 준비', running: 
   unavailable: '동적 검사 연결 필요', not_configured: '모델 미설정' }
 export const isActive = (job) => ACTIVE.has(job?.status)
 export const eligible = (mail) => mail.detection?.status === 'ok' && ['suspicious', 'danger'].includes(mail.detection.verdict)
+
+export function withLatestDynamic(row, job) {
+  if (!job || job.mail_id !== row.id || job.body_hash !== row.body_hash) return row
+  const current = row.dynamic
+  if (current && (job.created_at < current.created_at ||
+    (job.id === current.id && job.updated_at <= current.updated_at))) return row
+  return { ...row, dynamic: job }
+}
+
 export function dynamicLabel(job) {
   if (!job) return '대상 등록 전'
   if (job.observation === 'observed') return job.status === 'completed' ? '이상 행동 관찰' : '이상 행동 관찰 · 미완료'

@@ -3,6 +3,7 @@ import { scoreReason } from './api'
 import { TYPES } from './rules'
 import { Badge, CloseIcon, Mark, STATES, fmtShort, fmtTime, stateOf } from './ui'
 import { dynamicError, dynamicLabel, dynamicStatus } from './dynamicState'
+import { isPromoted } from './inboxState'
 
 // 항목별 한 줄 설명. "AI는 안 보이는 것도 읽는다"는 목록 위 한 줄(lead)에서 한 번만 말함
 const EXPLAIN = {
@@ -52,6 +53,7 @@ export function shortReason(r) {
   const state = stateOf(r)
   if (state === 'failed') return r.status_detail ?? '판정 결과 없음'
   if (state === 'pending') return r.status === 'incomplete' ? '검사 전 · 일부 못 가져옴' : '검사 전'
+  if (isPromoted(r)) return '동적 검사에서 이상 행동 관찰'
   if (r.evidence.length) return shortType(r.evidence[0].type) + (r.evidence.length > 1 ? ` 외 ${r.evidence.length - 1}곳` : '')
   if (state === 'incomplete') return `${r.missing_parts[0]} 못 가져옴`
   if (state === 'safe') return '숨은 명령 없음'
@@ -114,7 +116,7 @@ function DynamicSection({ r }) {
       <table className="info">
         <tbody>
           <tr><th scope="row">상태</th><td><span className={`tag dyn-${phase}${job?.observation === 'observed' ? ' dyn-alert' : ''}`}>{label}</span><p className="sub">{note}</p></td></tr>
-          {phase === 'done' && job.counts && (
+          {job?.counts && (phase === 'done' || job.observation === 'observed') && (
             <tr><th scope="row">관찰한 행동</th><td>
               <ul className="plain">{COUNTS.map(([k, name]) => <li key={k}>{name} <b>{job.counts[k] ?? 0}건</b></li>)}</ul>
             </td></tr>
@@ -133,6 +135,8 @@ function DynamicSection({ r }) {
 // 순서: ① 판정 띠(상태색은 여기와 라벨에만) → ② 정보 표 → ③ 할 일 → ④ 찾은 부분
 export function VerdictDetail({ r }) {
   const state = stateOf(r)
+  const promoted = isPromoted(r)
+  const modelReason = scoreReason(r)
   const partial = r.status !== 'ok' && (state === 'danger' || state === 'suspicious')
   const advice = partial && r.status === 'incomplete' ? [...ADVICE[state], ADVICE.incomplete[1]] : ADVICE[state]
   const n = r.evidence.length
@@ -141,7 +145,7 @@ export function VerdictDetail({ r }) {
     <div className="verdict">
       <div className={`band ${state}`}>
         <p className="band-state"><Mark v={state} size={20} />{STATES[state].label}</p>
-        <p>{SUMMARY[state]}</p>
+        <p>{promoted ? '동적 검사에서 이상 행동이 관찰됐어요. AI에게 맡기지 마세요.' : SUMMARY[state]}</p>
       </div>
 
       {!r.title && <DynamicSection r={r} />}
@@ -159,8 +163,10 @@ export function VerdictDetail({ r }) {
             </td></tr>
           )}
           {(state === 'failed' || r.status === 'failed') && <tr><th scope="row">원인</th><td>{r.status_detail ?? '판정 결과가 없어요.'}</td></tr>}
-          {[r.final_score, r.static_score, r.llm_score].some((score) => score != null) && (
-            <tr><th scope="row">탐지 모델 출력</th><td><Score r={r} />{scoreReason(r) && <p className="sub">{scoreReason(r)}</p>}</td></tr>
+          {promoted ? (
+            <tr><th scope="row">1차 판정</th><td>의심{r.static_score != null && ` · ${r.static_score}점`}{modelReason && <p className="sub">{modelReason}</p>}</td></tr>
+          ) : [r.final_score, r.static_score, r.llm_score].some((score) => score != null) && (
+            <tr><th scope="row">탐지 모델 출력</th><td><Score r={r} />{modelReason && <p className="sub">{modelReason}</p>}</td></tr>
           )}
         </tbody>
       </table>
@@ -174,7 +180,7 @@ export function VerdictDetail({ r }) {
 
       <h3 className="sec-title" id="evidence">찾은 부분{n > 0 && <span className="n">{n}곳</span>}</h3>
       {n === 0 ? (
-        <p className="no-evidence">{NO_EVIDENCE[state]}</p>
+        <p className="no-evidence">{promoted ? '본문에서 짚어낼 문장은 없어요. 동적 검사 결과에서 관찰 근거를 확인할 수 있어요.' : NO_EVIDENCE[state]}</p>
       ) : (
         <>
           <p className="lead">화면엔 안 보이지만 AI는 그대로 읽는 내용이에요.</p>

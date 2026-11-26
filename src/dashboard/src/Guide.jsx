@@ -39,7 +39,7 @@ export default function Guide() {
 
     <section className="guide-reading" aria-labelledby="guide-dynamic">
       <h2 id="guide-dynamic">동적 검사는 별도 준비가 필요해요</h2>
-      <p>의심되거나 위험한 메일은 에이전트가 어떻게 반응하는지도 검사할 수 있어요. 동적 검사 페이지에서 Ollama 주소와 모델을 선택하고 연결·도구 호출 확인을 진행하세요. 자동 검사를 켜도 준비되지 않았거나 실패한 검사는 안전으로 판정하지 않아요.</p>
+      <p>의심·위험 메일은 동적 검사에서 에이전트의 반응을 확인할 수 있어요. 의심 메일에서 이상 행동이 관찰되면 최종 판정이 위험으로 바뀌어요. 동적 검사 페이지에서 Ollama 주소와 모델을 선택하고 연결·도구 호출 확인을 진행하세요.</p>
       <a href="#/dynamic">동적 검사 설정 열기 <span aria-hidden="true">→</span></a>
     </section>
 
