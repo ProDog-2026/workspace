@@ -151,7 +151,8 @@ class DynamicService:
         return options, fingerprint(prompt["text"])
 
     async def enqueue(
-        self, owner, *, mail=None, detection=None, mode=None, email=None, retry=False, manual=False
+        self, owner, *, mail=None, detection=None, mode=None, email=None, retry=False, manual=False,
+        experiment_pdf=False,
     ):
         options, prompt_hash = await self.options(owner)
         pdf_texts = mail.get("pdf_texts", []) if mail and not manual else []
@@ -200,8 +201,10 @@ class DynamicService:
                 "subject": mail.get("subject", "") if mail else email["subject"],
                 "warnings": mail.get("warnings", []) if mail else [],
                 "truncated": mail.get("truncated", False) if mail else False,
-                "attachments_count": len(mail.get("attachments", [])) if mail else 0,
-                "pdf_attachments_count": len(pdf_texts),
+                "attachments_count": (
+                    len(mail.get("attachments", [])) if mail else int(experiment_pdf)
+                ),
+                "pdf_attachments_count": len(pdf_texts) if mail else int(experiment_pdf),
                 "static_detection": detection,
                 "observation": "unknown",
                 "error_code": None,

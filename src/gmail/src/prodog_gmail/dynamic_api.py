@@ -1,5 +1,8 @@
 """Authenticated adapter routes; the browser never talks to the control API directly."""
 
+import asyncio
+import base64
+import binascii
 import hashlib
 import re
 import uuid
@@ -11,6 +14,7 @@ from .dynamic import ACTIVE
 from .dynamic_models import DynamicSettings, PromptInput, TestEmail, local_url
 from .errors import ConnectorError
 from .mail import mail_metadata
+from .pdf_text import MAX_PDF_BYTES, MAX_PDF_TEXT_CHARS, extract_pdf_text
 from .scan import cacheable_detection, model_key, scan_mail
 
 
@@ -208,7 +212,27 @@ def install_dynamic_routes(app, session, csrf, limit_requests, get_mail):
     @app.post("/api/dynamic/experiments", status_code=202)
     async def experiment(request: Request, body: TestEmail):
         owner, _ = identity(request, write=True)
-        return {"job": await app.state.dynamic.enqueue(owner, email=body.model_dump())}
+        email = {"subject": body.subject, "body": body.body}
+        if body.pdf:
+            try:
+                payload = base64.b64decode(body.pdf.data, validate=True)
+            except (binascii.Error, ValueError) as exc:
+                raise ConnectorError("invalid_pdf", "PDF 파일을 읽을 수 없습니다.", 422) from exc
+            if len(payload) > MAX_PDF_BYTES:
+                raise ConnectorError("pdf_limit", "PDF는 1MB 이하여야 합니다.", 422)
+            status, text = await asyncio.to_thread(extract_pdf_text, payload, MAX_PDF_TEXT_CHARS)
+            if status != "parsed":
+                messages = {
+                    "invalid": "올바른 PDF 파일을 선택하세요.",
+                    "encrypted": "암호화된 PDF는 사용할 수 없습니다.",
+                    "no_text": "PDF에서 텍스트를 찾지 못했습니다.",
+                    "limit": "PDF 처리 한도를 초과했습니다.",
+                }
+                raise ConnectorError("pdf_" + status, messages[status], 422)
+            email["body"] += "\n\nUNTRUSTED PDF ATTACHMENT 1\n" + text
+        return {"job": await app.state.dynamic.enqueue(
+            owner, email=email, experiment_pdf=bool(body.pdf)
+        )}
 
     @app.post("/api/dynamic/manual-mail/{message_id}", status_code=202)
     async def manual_mail(request: Request, message_id: str):

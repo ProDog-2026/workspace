@@ -160,7 +160,9 @@ def _attachment(part: Message, payload: bytes | None, warnings: list[str]) -> di
     }
 
 
-def parse_gmail_message(message: dict) -> dict:
+def parse_gmail_message(
+    message: dict, *, supplemental_pdf: tuple[str, bytes] | None = None
+) -> dict:
     """Parse a Gmail ``format=raw`` message with strict size/structure limits.
 
     Invalid or oversized source returns an empty body with explicit warnings;
@@ -244,6 +246,7 @@ def parse_gmail_message(message: dict) -> dict:
         remaining = MAX_TEXT_CHARS
         pdf_remaining = MAX_PDF_TEXT_CHARS
         pdf_count = 0
+        supplemental_seen = False
         stack: list[Message] = [mime]
         while stack:
             part = stack.pop()
@@ -258,6 +261,8 @@ def parse_gmail_message(message: dict) -> dict:
                 payload = part.get_payload(decode=True)
                 metadata = _attachment(part, payload, warnings)
                 if kind == "application/pdf" or metadata["filename"].lower().endswith(".pdf"):
+                    if supplemental_pdf and payload == supplemental_pdf[1]:
+                        supplemental_seen = True
                     pdf_count += 1
                     if pdf_count > MAX_PDF_ATTACHMENTS or pdf_remaining <= 0:
                         status, text = "limit", ""
@@ -289,6 +294,21 @@ def parse_gmail_message(message: dict) -> dict:
             remaining -= len(content)
             (plain if kind == "text/plain" else html).append(content)
             analysis.append(content)
+        if supplemental_pdf and not supplemental_seen:
+            filename, payload = supplemental_pdf
+            if pdf_count >= MAX_PDF_ATTACHMENTS or pdf_remaining <= 0:
+                status, text = "limit", ""
+            else:
+                status, text = extract_pdf_text(payload, pdf_remaining)
+            result["attachments"].append({
+                "filename": filename[:MAX_HEADER_CHARS], "content_type": "application/pdf",
+                "size_bytes": len(payload), "disposition": "attachment", "content_id": "",
+                "is_inline": False, "pdf_status": status,
+            })
+            if status == "parsed":
+                result["pdf_texts"].append(text)
+            else:
+                _warn(warnings, "attachment_content_not_analyzed")
         result["text_plain"] = "".join(plain)
         result["text_html"] = "".join(html)
         result["analysis_text"] = "".join(analysis)

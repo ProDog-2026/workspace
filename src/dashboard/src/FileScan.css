@@ -1,0 +1,10 @@
+.file-scan { margin-bottom: var(--space-5); }
+.file-scan-form, .file-scan-result { padding: var(--space-5) var(--card-pad); }
+.file-scan-form { display: grid; gap: var(--space-3); }
+.file-scan-form p, .file-scan-result p { margin: 0; }
+.file-scan-form label { display: grid; gap: var(--space-2); font-weight: 600; }
+.file-scan-form input[type=file] { max-width: 100%; font-weight: 400; }
+.file-scan-error, .file-scan-warning { color: var(--danger-text); }
+.file-scan-result { border-top: 1px solid var(--grid); display: grid; gap: var(--space-3); overflow-wrap: anywhere; }
+.file-scan-result h3, .file-scan-result h4 { margin: 0; }
+.file-scan-result ul { margin: 0; padding-inline-start: 1.5em; }

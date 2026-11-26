@@ -1,6 +1,7 @@
 """The public Gmail API gates and owns dynamic executions; Ollama/Docker stay external."""
 
 import asyncio
+import base64
 import json
 import time
 
@@ -143,6 +144,39 @@ def wait_job(client, job_id, states=("completed", "failed")):
 
 def mail_id(client):
     return client.get("/api/mails").json()["messages"][0]["id"]
+
+
+def test_experiment_pdf_is_extracted_and_submitted_without_storing_raw_input(setup):
+    client, service, config = setup
+    pdf = base64.b64encode(pdf_bytes("Synthetic attachment text")).decode()
+    response = change(client, "/api/dynamic/experiments", {
+        "subject": "Test", "body": "Synthetic email",
+        "pdf": {"filename": "sample.pdf", "data": pdf},
+    })
+    assert response.status_code == 202, response.text
+    job = response.json()["job"]
+    assert job["attachments_count"] == 1
+    assert wait_job(client, job["id"])["status"] == "completed"
+    assert service.submitted[-1]["email"]["body"] == (
+        "Synthetic email\n\nUNTRUSTED PDF ATTACHMENT 1\nSynthetic attachment text"
+    )
+    assert b"Synthetic attachment text" not in config.database_path.read_bytes()
+
+
+@pytest.mark.parametrize("payload,code", [
+    ("not-base64!", "invalid_pdf"),
+    (base64.b64encode(b"not a PDF").decode(), "pdf_invalid"),
+    (base64.b64encode(pdf_bytes()).decode(), "pdf_no_text"),
+    (base64.b64encode(pdf_bytes(password="synthetic")).decode(), "pdf_encrypted"),
+])
+def test_experiment_rejects_unreadable_pdf(setup, payload, code):
+    client, service, _ = setup
+    response = change(client, "/api/dynamic/experiments", {
+        "body": "Synthetic email", "pdf": {"filename": "sample.pdf", "data": payload},
+    })
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == code
+    assert not service.submitted
 
 
 def test_get_never_starts_container(setup):

@@ -16,6 +16,16 @@ const DEPLOY_ERRORS = {
   connection_failed: '배포 후 서버 또는 수신 서비스에 연결하지 못했습니다. Docker 컨테이너 상태를 확인하세요.',
 }
 const CHECK_MESSAGES = { ready: '모델 연결과 도구 호출 확인 완료', limit_reached: '응답 토큰 한도 도달', tool_call_not_verified: '연결됐지만 도구 호출 미확인', tool_roundtrip_not_verified: '도구 결과 전달 뒤 최종 응답 미확인' }
+const PDF_LIMIT = 1024 * 1024
+
+function readPdf(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onerror = () => reject(new Error('PDF 파일을 읽지 못했습니다. 다시 선택해 주세요.'))
+    reader.onload = () => resolve(reader.result.split(',')[1])
+    reader.readAsDataURL(file)
+  })
+}
 
 const TOOL_INFO = {
   read_email: ['검사 메일 읽기', '검사 대상으로 전달된 메일을 읽습니다.', '검사 데이터'],
@@ -65,6 +75,10 @@ export default function Dynamic() {
   const currentForm = useRef(form)
   currentForm.current = form
   const [email, setEmail] = useState({ subject: '회의 일정 확인', body: '11월 10일 오후 2시, 301호에서 회의합니다.' })
+  const [experimentPdf, setExperimentPdf] = useState(null)
+  const [pdfError, setPdfError] = useState('')
+  const [experimentError, setExperimentError] = useState('')
+  const experimentPdfInput = useRef(null)
   const [mailList, setMailList] = useState(null)
   const [mailNext, setMailNext] = useState(null)
   const [selectedMail, setSelectedMail] = useState('')
@@ -150,7 +164,11 @@ export default function Dynamic() {
 
   const action = async (name, work) => {
     setBusy(name); setError(''); setNotice('')
-    try { await work() } catch (e) { setError(e.message) } finally { setBusy('') }
+    if (name === 'experiment') setExperimentError('')
+    try { await work() } catch (e) {
+      if (name === 'experiment') setExperimentError(e.message)
+      else setError(e.message)
+    } finally { setBusy('') }
   }
   const save = async () => {
     const data = await dynamic('/settings', { method: 'PUT', body: form })
@@ -272,11 +290,28 @@ export default function Dynamic() {
         </> : <p className="note">받은편지함에 메일이 없습니다.</p>)}
         <p className="note">Gmail이 연결되지 않았다면 <a href="#/settings">설정</a>에서 먼저 연결하세요. 모델을 선택하고 설정을 저장해야 검사를 실행할 수 있습니다.</p>
       </div>
-      <form className="panel-body dynamic-stack" onSubmit={(e) => { e.preventDefault(); action('experiment', async () => { await save(); const data = await dynamic('/experiments', { method: 'POST', body: email }); await loadJobs(); selectJob(data.job); setNotice('실험을 대기열에 등록했습니다.') }) }}>
+      <form className="panel-body dynamic-stack" onSubmit={(e) => { e.preventDefault(); action('experiment', async () => { const pdf = experimentPdf ? { filename: experimentPdf.name, data: await readPdf(experimentPdf) } : undefined; await save(); const data = await dynamic('/experiments', { method: 'POST', body: { ...email, ...(pdf && { pdf }) } }); await loadJobs(); selectJob(data.job); setNotice('실험을 대기열에 등록했습니다.') }) }}>
         <h3>직접 입력</h3><p className="note">직접 입력한 메일은 1차 분류를 거치지 않으며 받은편지함 기록과 구분됩니다.</p>
         <label>제목<input value={email.subject} maxLength="4096" onChange={(e) => setEmail((p) => ({ ...p, subject: e.target.value }))} /></label>
         <label>메일 본문<textarea rows="7" required maxLength="300000" value={email.body} onChange={(e) => setEmail((p) => ({ ...p, body: e.target.value }))} /></label>
-        <div><button className="btn primary" disabled={!ready || !!busy || !form.model || !email.body.trim()}>{busy === 'experiment' ? '등록 중…' : '실험 실행'}</button></div>
+        <label>PDF 첨부 (선택 사항)<input ref={experimentPdfInput} type="file" accept=".pdf,application/pdf" disabled={!!busy} aria-describedby={pdfError ? 'experiment-pdf-help experiment-pdf-error' : 'experiment-pdf-help'} onChange={(e) => {
+          const file = e.target.files?.[0]
+          setExperimentPdf(null)
+          if (!file) { setPdfError(''); return }
+          if (!file.name.toLowerCase().endsWith('.pdf')) { setPdfError('PDF 파일을 선택해 주세요.'); return }
+          if (file.size > PDF_LIMIT) { setPdfError('PDF 파일은 1 MB 이하여야 합니다.'); return }
+          setPdfError(''); setExperimentPdf(file)
+        }} /></label>
+        <p id="experiment-pdf-help" className="note">PDF 1개, 최대 1 MB, 20페이지. 추출한 텍스트를 메일 본문과 함께 검사합니다.</p>
+        {pdfError && <p id="experiment-pdf-error" className="dynamic-notice error" role="alert">{pdfError}</p>}
+        {(experimentPdf || pdfError) && <div><button type="button" className="btn" disabled={!!busy} onClick={() => {
+          experimentPdfInput.current.value = ''; setExperimentPdf(null); setPdfError('')
+        }}>PDF 첨부 제거</button></div>}
+        {experimentError && <p className="dynamic-notice error" role="alert">{experimentError}</p>}
+        {!ready && <p className="note">메일 계정 연결과 설정을 확인해 주세요.</p>}
+        {ready && !form.model && <p className="note">실험을 실행하려면 모델을 선택해 주세요.</p>}
+        {ready && form.model && !email.body.trim() && <p className="note">메일 본문을 입력해 주세요.</p>}
+        <div><button className="btn primary" disabled={!ready || !!busy || !form.model || !email.body.trim() || !!pdfError}>{busy === 'experiment' ? '등록 중…' : '실험 실행'}</button></div>
       </form>
     </details>
 

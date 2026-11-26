@@ -50,10 +50,17 @@ class DynamicSettings(BaseModel):
         return value.strip()
 
 
+class ExperimentPdf(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    filename: str = Field(min_length=1, max_length=255)
+    data: str = Field(min_length=1, max_length=1_398_104)
+
+
 class TestEmail(BaseModel):
     model_config = ConfigDict(extra="forbid")
     subject: str = Field(default="", max_length=4096)
     body: str = Field(min_length=1, max_length=300000)
+    pdf: ExperimentPdf | None = None
 
     @field_validator("body")
     @classmethod

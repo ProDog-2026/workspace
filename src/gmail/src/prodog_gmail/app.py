@@ -19,6 +19,7 @@ from .deployment import Deployment
 from .dynamic import DynamicService
 from .dynamic_api import install_dynamic_routes
 from .errors import ConnectorError
+from .file_scan import FileScanInput, scan_file
 from .google import GoogleClient
 from .mail import mail_metadata, parse_gmail_message
 from .scan import cacheable_detection, load_detector, model_key, scan_mail
@@ -388,6 +389,18 @@ def create_app(settings: Settings | None = None, transport=None, dynamic_transpo
         secret, current = session(request, required=True)
         limit_requests(secret, "list", 30)
         return await load_page(current, limit, page_token)
+
+    @application.post("/api/scan/file")
+    async def scan_uploaded_file(request: Request, body: FileScanInput):
+        secret, _ = csrf(request)
+        if application.state.settings.app_mode == "google":
+            session(request, required=True)
+        limit_requests(secret, "file_scan", 30)
+        if application.state.detector is None:
+            raise ConnectorError(
+                "detector_not_configured", "정적 검사 모델이 연결되지 않았습니다.", 503
+            )
+        return await asyncio.to_thread(scan_file, body, application.state.detector)
 
     def latest_dynamic(owner, message_id, body_hash):
         service = application.state.dynamic
