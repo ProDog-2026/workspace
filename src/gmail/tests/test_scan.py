@@ -45,6 +45,49 @@ def test_model_error_is_never_safe():
     assert result["verdict"] is None
 
 
+def test_pdf_verdict_is_separate_from_body_verdict():
+    class ContentScore:
+        def predict_proba(self, texts):
+            return np.array([
+                [0.8, 0.2] if "Synthetic PDF note" in text else [0.99, 0.01]
+                for text in texts
+            ])
+
+    detector = artifact() | {"pipeline": ContentScore()}
+    mail = MAIL | {
+        "attachments": [
+            {"filename": "image.png"},
+            {"filename": "note.pdf", "pdf_status": "parsed"},
+        ],
+        "pdf_texts": ["Synthetic PDF note"],
+    }
+    result = scan_mail(detector, mail)
+    assert result["verdict"] == "safe"
+    assert result["static_score"] == 1
+    assert result["pdf_results"][0]["attachment_index"] == 1
+    assert result["pdf_results"][0]["verdict"] == "suspicious"
+    assert result["pdf_results"][0]["static_score"] == 20
+
+
+def test_pdf_scan_failure_does_not_hide_body_verdict():
+    class FailingPdf:
+        def predict_proba(self, texts):
+            if any("Synthetic PDF note" in text for text in texts):
+                raise RuntimeError("failed PDF")
+            return np.array([[0.99, 0.01]] * len(texts))
+
+    detector = artifact() | {"pipeline": FailingPdf()}
+    mail = MAIL | {
+        "attachments": [{"filename": "note.pdf", "pdf_status": "parsed"}],
+        "pdf_texts": ["Synthetic PDF note"],
+    }
+    result = scan_mail(detector, mail)
+    assert result["status"] == "ok"
+    assert result["verdict"] == "safe"
+    assert result["pdf_results"][0]["status"] == "failed"
+    assert result["pdf_results"][0]["verdict"] is None
+
+
 @pytest.fixture
 def client(tmp_path):
     settings = Settings(
@@ -75,3 +118,29 @@ def test_detection_carries_thresholds_for_the_verdict_reason():
     result = scan_mail(artifact(probability=0.08), MAIL)
     assert result["verdict"] == "suspicious"
     assert result["thresholds"] == {"suspicious": 5.0, "danger": 40.0}
+
+
+def test_pdf_scan_failure_is_retried_on_next_mail_list(client, monkeypatch):
+    scans = []
+
+    def scan(_detector, _mail):
+        scans.append(1)
+        pdf_status = "failed" if len(scans) == 1 else "ok"
+        return {
+            "status": "ok", "verdict": "safe", "probability": 0.01, "static_score": 1,
+            "pdf_results": [{"attachment_index": 0, "status": pdf_status}],
+        }
+
+    monkeypatch.setattr("prodog_gmail.app.scan_mail", scan)
+    first = client.get("/api/mails?limit=1").json()["messages"][0]
+    second = client.get("/api/mails?limit=1").json()["messages"][0]
+    assert first["detection"]["pdf_results"][0]["status"] == "failed"
+    assert second["detection"]["pdf_results"][0]["status"] == "ok"
+    assert len(scans) == 2
+
+
+def test_malformed_model_result_is_reported_as_scan_failure(monkeypatch):
+    monkeypatch.setattr("prodog_gmail.scan.predict", lambda _artifact, _texts: [{}])
+    result = scan_mail(artifact(probability=0.1), MAIL)
+    assert result["status"] == "failed"
+    assert result["verdict"] is None

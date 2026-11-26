@@ -14,6 +14,7 @@ from oidc_provider import id_token, jwks
 from prodog_gmail.app import COOKIE, create_app
 from prodog_gmail.config import GMAIL_SCOPE, Settings
 from prodog_gmail.demo import demo_messages
+from prodog_gmail.scan import model_key
 from prodog_gmail.store import digest
 
 BASE = "http://127.0.0.1:8765"
@@ -469,7 +470,9 @@ def test_disconnect_forgets_saved_results(google_client):
     callback(client, oauth_start(client)["state"][0])
     client.get("/api/mails")
     account = client.app.state.store.session(client.cookies.get(COOKIE))["account_id"]
-    assert client.app.state.store.cached_scans(account, [m["id"] for m in demo_messages()], "none")
+    assert client.app.state.store.cached_scans(
+        account, [m["id"] for m in demo_messages()], model_key(None)
+    )
     assert post(client, "/api/disconnect").status_code == 200
     with client.app.state.store.connection() as db:
         assert db.execute("SELECT count(*) FROM mail_scans").fetchone()[0] == 0

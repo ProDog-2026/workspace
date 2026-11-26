@@ -113,7 +113,9 @@ class DynamicStore:
         result = {
             k: v
             for k, v in job.items()
-            if k not in {"owner", "options", "prompt_hash", "mode", "key", "base_key"}
+            if k not in {
+                "owner", "options", "prompt_hash", "mode", "key", "base_key", "pdf_context_hash"
+            }
         }
         result["configuration"] = job.get("options")
         return result

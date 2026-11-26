@@ -155,7 +155,7 @@ export default function Dynamic() {
   const save = async () => {
     const data = await dynamic('/settings', { method: 'PUT', body: form })
     setForm(data.settings)
-    setNotice('설정을 저장했습니다. 받은편지함을 열면 의심·위험 메일을 자동으로 등록합니다.')
+    setNotice(data.settings.auto_submit ? '설정을 저장했습니다. 받은편지함을 열면 의심·위험 메일을 자동으로 등록합니다.' : '설정을 저장했습니다.')
   }
   const selectJob = (job) => {
     setSelected(job.id)
@@ -175,7 +175,7 @@ export default function Dynamic() {
     <header className="page-head"><div><p className="dynamic-eyebrow">2차 분석 · 에이전트 동작 관찰</p><h1>동적 검사</h1></div>
       <div className="ctl-row"><span className="tag">로컬 실험 환경</span><button className="btn" disabled={!!busy} onClick={() => action('refresh', async () => { await Promise.all([loadJobs(), loadPrompts(), loadModels()]); setNotice('최신 상태를 불러왔습니다.') })}>상태 새로고침</button></div>
     </header>
-    <p className="dynamic-lead">1차에서 의심·위험으로 분류된 메일을 격리된 에이전트에 전달하고, 도구 요청과 확인된 효과를 살펴봅니다.</p>
+    <p className="dynamic-lead">정적 검사에서 의심·위험으로 분류된 메일을 격리된 에이전트에 전달하고, 도구 요청과 확인된 효과를 살펴봅니다.</p>
     {error && <div className="dynamic-notice error" role="alert">{error}</div>}
     {notice && <div className="dynamic-notice" role="status">{notice}</div>}
     {ready && !staticReady && <div className="dynamic-notice">1차 분류 모델이 아직 연결되지 않았습니다. 자동 메일 검사는 모델 연결 후 시작되며, 아래 수동 실험은 별도로 사용할 수 있습니다.</div>}
@@ -284,7 +284,7 @@ export default function Dynamic() {
       <div className="panel-head"><h2>실행 내역</h2><button className="btn" disabled={!!busy || !ready} onClick={() => action('import', async () => {
         const imported = await dynamic('/import', { method: 'POST' }); await loadJobs(); setNotice(`기존 실험 기록 ${imported.imported}건을 연결했습니다.`)
       })}>기존 실험 기록 불러오기</button></div>
-      {!jobs.length ? <p className="empty">아직 실행 기록이 없습니다. 의심·위험 메일이 전달되거나 수동 실험을 시작하면 여기에 표시됩니다.</p>
+      {!jobs.length ? <p className="empty">아직 실행 기록이 없습니다. 의심·위험 메일을 검사하거나 수동 실험을 시작하면 여기에 표시됩니다.</p>
         : <div className="table-scroll"><table className="list dynamic-history"><thead><tr><th>출처</th><th>메일·실험</th><th>동적 검사</th><th>등록 시각</th></tr></thead><tbody>
           {jobs.slice(0, historyLimit).map((entry) => <tr key={entry.id} className={selected === entry.id ? 'selected' : ''}>
             <td><span className="tag">{SOURCE[entry.source] ?? entry.source}</span></td><td><button className="dynamic-text-btn" onClick={() => selectJob(entry)}>{entry.subject || '(제목 없음)'}</button></td>
@@ -323,7 +323,7 @@ function DynamicRun({ job, onChange, onSelect }) {
     return () => { alive = false; controller.abort() }
   }, [job.id, job.run_id, job.updated_at, job.status])
   const stop = async () => { setBusy(true); try { await dynamic(`/jobs/${job.id}/stop`, { method: 'POST' }); await onChange() } catch (e) { setError(e.message) } finally { setBusy(false) } }
-  const retry = async () => { setBusy(true); try { const path = job.source === 'gmail_manual' ? `/manual-mail/${encodeURIComponent(job.mail_id)}` : `/mail/${encodeURIComponent(job.mail_id)}?retry=true`; const data = await dynamic(path, { method: 'POST' }); await onChange(); if (data.job) onSelect(data.job); else setError('현재 1차 판정이 의심·위험이 아니거나 분류기를 사용할 수 없어 재검사를 건너뛰었습니다.') } catch (e) { setError(e.message) } finally { setBusy(false) } }
+  const retry = async () => { setBusy(true); try { const path = job.source === 'gmail_manual' ? `/manual-mail/${encodeURIComponent(job.mail_id)}` : `/mail/${encodeURIComponent(job.mail_id)}?retry=true`; const data = await dynamic(path, { method: 'POST' }); await onChange(); if (data.job) onSelect(data.job); else setError('동적 재검사는 현재 정적 판정이 의심 또는 위험인 메일에서 가능합니다.') } catch (e) { setError(e.message) } finally { setBusy(false) } }
   return <div className="dynamic-run">
     <div className="dynamic-run-heading"><div><p className="dynamic-eyebrow">선택한 실행</p><h2>{job.subject || '(제목 없음)'}</h2><p className="note mono">{job.run_id || '실행 ID 발급 대기'}{job.calls != null ? ` · LLM ${job.calls}회` : ''}{job.elapsed_seconds != null ? ` · ${job.elapsed_seconds}초` : ''}</p></div>
       <div className="ctl-row">{isActive(job) && <button className="btn" onClick={stop} disabled={busy}>검사 중지</button>}

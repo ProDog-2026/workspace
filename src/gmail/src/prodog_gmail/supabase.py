@@ -13,7 +13,8 @@ def fetch_status(meta: dict) -> str:
     """Rules from arch/SUPABASE_TABLE.md. Complete does not mean analyzed or safe."""
     if meta.get("body_hash") is None:
         return "failed"
-    if meta.get("truncated") or meta.get("warnings") or meta.get("attachments"):
+    unread = any(a.get("pdf_status") != "parsed" for a in (meta.get("attachments") or []))
+    if meta.get("truncated") or meta.get("warnings") or unread:
         return "incomplete"
     return "complete"
 
