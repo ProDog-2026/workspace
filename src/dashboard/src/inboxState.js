@@ -1,5 +1,16 @@
 import { UNREACHABLE } from './api.js'
 
+export const isPromoted = (r) =>
+  !r.pending && r.verdict === 'suspicious' && r.dynamic?.observation === 'observed'
+
+// 위험·의심 근거가 있으면 수집이 불완전해도 그 판정을 먼저 보여 줌.
+export function stateOf(r) {
+  if (r.pending) return r.status === 'failed' ? 'failed' : 'pending'
+  if (isPromoted(r)) return 'danger'
+  if (r.verdict === 'danger' || r.verdict === 'suspicious') return r.verdict
+  return r.status === 'ok' ? r.verdict ?? 'failed' : r.status
+}
+
 // 받은편지함 목록을 보여 줄 수 없을 때의 안내. null 이면 목록을 그대로 보여 줌.
 // 상태마다 "무슨 일인지(title) + 무엇을 하면 되는지(body) + 다음 행동 하나(action)"를 다르게 줌.
 // action.href 가 없으면 다시 불러오기 버튼

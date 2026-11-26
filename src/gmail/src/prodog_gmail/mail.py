@@ -3,8 +3,9 @@
 All body strings are untrusted data. HTML is retained as source text, including
 comments and hidden elements; callers must never insert it as rendered HTML.
 ``body_hash`` hashes the original RFC 822 body bytes (including MIME envelopes
-and encoded attachments), not Gmail metadata or mail headers. No source bytes
-or attachment payloads are returned or written to disk.
+and encoded attachments), not Gmail metadata or mail headers. PDF text is
+available in memory for analysis. Source and attachment bytes are never returned
+or written to disk.
 """
 
 from __future__ import annotations
@@ -20,6 +21,8 @@ from email.parser import BytesParser
 from email.utils import parsedate_to_datetime
 from typing import Any
 
+from .pdf_text import MAX_PDF_ATTACHMENTS, MAX_PDF_TEXT_CHARS, extract_pdf_text
+
 MAX_RAW_BYTES = 2 * 1024 * 1024
 MAX_TEXT_CHARS = 300_000
 MAX_MIME_PARTS = 100
@@ -27,7 +30,7 @@ MAX_MIME_DEPTH = 20
 MAX_HEADER_CHARS = 4096
 MAX_WARNINGS = 100
 _MAX_ENCODED_CHARS = 4 * ((MAX_RAW_BYTES + 2) // 3)
-_BODY_FIELDS = frozenset({"text_plain", "text_html", "analysis_text"})
+_BODY_FIELDS = frozenset({"text_plain", "text_html", "analysis_text", "pdf_texts"})
 
 
 class _MimeLimitError(ValueError):
@@ -124,8 +127,7 @@ def _decode_text(part: Message, payload: bytes, warnings: list[str]) -> str:
     return payload.decode("utf-8", errors="replace")
 
 
-def _attachment(part: Message, warnings: list[str]) -> dict:
-    payload = part.get_payload(decode=True)
+def _attachment(part: Message, payload: bytes | None, warnings: list[str]) -> dict:
     _defects(part, warnings)
     if isinstance(payload, bytes):
         size = len(payload)
@@ -158,7 +160,9 @@ def _attachment(part: Message, warnings: list[str]) -> dict:
     }
 
 
-def parse_gmail_message(message: dict) -> dict:
+def parse_gmail_message(
+    message: dict, *, supplemental_pdf: tuple[str, bytes] | None = None
+) -> dict:
     """Parse a Gmail ``format=raw`` message with strict size/structure limits.
 
     Invalid or oversized source returns an empty body with explicit warnings;
@@ -184,6 +188,7 @@ def parse_gmail_message(message: dict) -> dict:
         "text_plain": "",
         "text_html": "",
         "analysis_text": "",
+        "pdf_texts": [],
         "attachments": [],
         "warnings": warnings,
         "truncated": False,
@@ -239,6 +244,9 @@ def parse_gmail_message(message: dict) -> dict:
         html: list[str] = []
         analysis: list[str] = []
         remaining = MAX_TEXT_CHARS
+        pdf_remaining = MAX_PDF_TEXT_CHARS
+        pdf_count = 0
+        supplemental_seen = False
         stack: list[Message] = [mime]
         while stack:
             part = stack.pop()
@@ -250,8 +258,23 @@ def parse_gmail_message(message: dict) -> dict:
                 or (not kind.startswith("multipart/") and kind not in ("text/plain", "text/html"))
             )
             if attachment:
-                _warn(warnings, "attachment_content_not_analyzed")
-                result["attachments"].append(_attachment(part, warnings))
+                payload = part.get_payload(decode=True)
+                metadata = _attachment(part, payload, warnings)
+                if kind == "application/pdf" or metadata["filename"].lower().endswith(".pdf"):
+                    if supplemental_pdf and payload == supplemental_pdf[1]:
+                        supplemental_seen = True
+                    pdf_count += 1
+                    if pdf_count > MAX_PDF_ATTACHMENTS or pdf_remaining <= 0:
+                        status, text = "limit", ""
+                    else:
+                        status, text = extract_pdf_text(payload or b"", pdf_remaining)
+                    metadata["pdf_status"] = status
+                    if status == "parsed":
+                        result["pdf_texts"].append(text)
+                        pdf_remaining -= len(text)
+                if metadata.get("pdf_status") != "parsed":
+                    _warn(warnings, "attachment_content_not_analyzed")
+                result["attachments"].append(metadata)
                 continue
             if part.is_multipart():
                 stack.extend(reversed(part.get_payload()))
@@ -271,6 +294,21 @@ def parse_gmail_message(message: dict) -> dict:
             remaining -= len(content)
             (plain if kind == "text/plain" else html).append(content)
             analysis.append(content)
+        if supplemental_pdf and not supplemental_seen:
+            filename, payload = supplemental_pdf
+            if pdf_count >= MAX_PDF_ATTACHMENTS or pdf_remaining <= 0:
+                status, text = "limit", ""
+            else:
+                status, text = extract_pdf_text(payload, pdf_remaining)
+            result["attachments"].append({
+                "filename": filename[:MAX_HEADER_CHARS], "content_type": "application/pdf",
+                "size_bytes": len(payload), "disposition": "attachment", "content_id": "",
+                "is_inline": False, "pdf_status": status,
+            })
+            if status == "parsed":
+                result["pdf_texts"].append(text)
+            else:
+                _warn(warnings, "attachment_content_not_analyzed")
         result["text_plain"] = "".join(plain)
         result["text_html"] = "".join(html)
         result["analysis_text"] = "".join(analysis)

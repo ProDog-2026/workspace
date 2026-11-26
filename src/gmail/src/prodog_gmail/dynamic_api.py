@@ -1,5 +1,8 @@
 """Authenticated adapter routes; the browser never talks to the control API directly."""
 
+import asyncio
+import base64
+import binascii
 import hashlib
 import re
 import uuid
@@ -10,7 +13,10 @@ from fastapi.responses import JSONResponse
 from .dynamic import ACTIVE
 from .dynamic_models import DynamicSettings, PromptInput, TestEmail, local_url
 from .errors import ConnectorError
-from .scan import scan_mail
+from .file_scan import decode_file
+from .mail import MAX_RAW_BYTES, mail_metadata, parse_gmail_message
+from .pdf_text import MAX_PDF_BYTES, MAX_PDF_TEXT_CHARS, extract_pdf_text
+from .scan import cacheable_detection, model_key, scan_mail
 
 
 def install_dynamic_routes(app, session, csrf, limit_requests, get_mail):
@@ -140,13 +146,61 @@ def install_dynamic_routes(app, session, csrf, limit_requests, get_mail):
         return result
 
     @app.post("/api/dynamic/mail/{message_id}")
-    async def submit_mail(request: Request, message_id: str, retry: bool = False):
+    async def submit_mail(
+        request: Request, message_id: str, retry: bool = False, start: bool = False
+    ):
         owner, current = identity(request, write=True, gmail=True)
         service = app.state.dynamic
-        if not service.settings(owner).auto_submit and not retry:
+        if not (start or retry or service.settings(owner).auto_submit):
             return {"skipped": True, "reason": "automatic_disabled"}
+
+        store, detector = app.state.store, app.state.detector
+        key = model_key(detector)
+        cached = store.cached_scans(owner, [message_id], key).get(message_id)
         parsed = await get_mail(current, message_id)
-        detection = scan_mail(app.state.detector, parsed)
+        if parsed["body_hash"] is None:
+            return {"skipped": True, "reason": "static_not_ready"}
+        detection = None
+        coverage_changed = False
+        if cached and cached.get("body_hash") == parsed["body_hash"]:
+            previous = cached["attachments"]
+            current_files = parsed["attachments"]
+            coverage_changed = previous != current_files
+            if not coverage_changed:
+                detection = cached["detection"]
+            elif any(
+                saved.get("pdf_status") == "parsed" and fresh.get("pdf_status") != "parsed"
+                for saved, fresh in zip(previous, current_files, strict=False)
+            ):
+                raise ConnectorError(
+                    "pdf_extraction_changed",
+                    "정적 검사에 사용한 PDF 텍스트를 다시 읽지 못했어요. 잠시 후 다시 시도하세요.",
+                    409,
+                )
+        if detection is None:
+            detection = scan_mail(detector, parsed)
+            if detection and detection["status"] == "ok":
+                cacheable = cacheable_detection(detection)
+                store.save_metadata(owner, mail_metadata(parsed), preserve_scan=not cacheable)
+                if cacheable:
+                    store.save_scan(owner, message_id, key, detection)
+                if coverage_changed and cached["detection"]:
+                    body_fields = ("status", "verdict", "probability", "static_score", "thresholds")
+                    previous_body = {field: cached["detection"].get(field) for field in body_fields}
+                    current_body = {field: detection.get(field) for field in body_fields}
+                    if previous_body != current_body:
+                        if not cacheable:
+                            raise ConnectorError(
+                                "static_scan_failed",
+                                "첨부파일 검사를 완료하지 못했어요. 잠시 후 다시 시도해 주세요.",
+                                503,
+                            )
+                        raise ConnectorError(
+                            "static_result_changed",
+                            "메일 본문의 정적 검사 결과가 바뀌었어요. "
+                            "메일 목록을 새로고침해 주세요.",
+                            409,
+                        )
         if not detection or detection.get("status") != "ok":
             return {"skipped": True, "reason": "static_not_ready"}
         if detection.get("verdict") not in {"suspicious", "danger"}:
@@ -159,7 +213,59 @@ def install_dynamic_routes(app, session, csrf, limit_requests, get_mail):
     @app.post("/api/dynamic/experiments", status_code=202)
     async def experiment(request: Request, body: TestEmail):
         owner, _ = identity(request, write=True)
-        return {"job": await app.state.dynamic.enqueue(owner, email=body.model_dump())}
+        pdf_messages = {
+            "invalid": "올바른 PDF 파일을 선택하세요.",
+            "encrypted": "암호화된 PDF는 사용할 수 없습니다.",
+            "no_text": "PDF에서 텍스트를 찾지 못했습니다.",
+            "limit": "PDF 처리 한도를 초과했습니다.",
+        }
+        if body.eml:
+            raw = decode_file(body.eml, ".eml", MAX_RAW_BYTES)
+            if not re.match(br"[!-9;-~]+:[^\r\n]*\r?\n", raw) or not re.search(br"\r?\n\r?\n", raw):
+                raise ConnectorError("invalid_eml", "올바른 EML 파일을 선택하세요.", 422)
+            supplemental = None
+            if body.pdf:
+                pdf_payload = decode_file(body.pdf, ".pdf", MAX_PDF_BYTES)
+                status, _ = await asyncio.to_thread(
+                    extract_pdf_text, pdf_payload, MAX_PDF_TEXT_CHARS
+                )
+                if status != "parsed":
+                    raise ConnectorError("pdf_" + status, pdf_messages[status], 422)
+                supplemental = (body.pdf.filename, pdf_payload)
+            parsed = await asyncio.to_thread(
+                parse_gmail_message,
+                {"raw": base64.urlsafe_b64encode(raw).decode()},
+                supplemental_pdf=supplemental,
+            )
+            if parsed["body_hash"] is None:
+                raise ConnectorError("invalid_eml", "EML 파일을 읽을 수 없습니다.", 422)
+            email = app.state.dynamic.email_input(parsed, pdf_texts=parsed["pdf_texts"])
+            if not email["subject"]:
+                email["subject"] = body.eml.filename
+            meta = {
+                "warnings": parsed["warnings"],
+                "truncated": parsed["truncated"],
+                "attachments_count": len(parsed["attachments"]),
+                "pdf_attachments_count": len(parsed["pdf_texts"]),
+            }
+            return {"job": await app.state.dynamic.enqueue(
+                owner, email=email, experiment_meta=meta
+            )}
+        email = {"subject": body.subject, "body": body.body}
+        if body.pdf:
+            try:
+                payload = base64.b64decode(body.pdf.data, validate=True)
+            except (binascii.Error, ValueError) as exc:
+                raise ConnectorError("invalid_pdf", "PDF 파일을 읽을 수 없습니다.", 422) from exc
+            if len(payload) > MAX_PDF_BYTES:
+                raise ConnectorError("pdf_limit", "PDF는 1MB 이하여야 합니다.", 422)
+            status, text = await asyncio.to_thread(extract_pdf_text, payload, MAX_PDF_TEXT_CHARS)
+            if status != "parsed":
+                raise ConnectorError("pdf_" + status, pdf_messages[status], 422)
+            email["body"] += "\n\nUNTRUSTED PDF ATTACHMENT 1\n" + text
+        return {"job": await app.state.dynamic.enqueue(
+            owner, email=email, experiment_pdf=bool(body.pdf)
+        )}
 
     @app.post("/api/dynamic/manual-mail/{message_id}", status_code=202)
     async def manual_mail(request: Request, message_id: str):

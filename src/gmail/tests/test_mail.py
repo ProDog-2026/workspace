@@ -2,9 +2,13 @@ import base64
 import hashlib
 from email.message import EmailMessage
 from email.policy import SMTP
+from io import BytesIO
 
 import pytest
+from pypdf import PdfWriter
+from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject, TextStringObject
 
+from prodog_gmail import mail
 from prodog_gmail.demo import DEMO_EMAIL, demo_messages
 from prodog_gmail.mail import (
     MAX_MIME_DEPTH,
@@ -14,6 +18,7 @@ from prodog_gmail.mail import (
     mail_metadata,
     parse_gmail_message,
 )
+from prodog_gmail.pdf_text import MAX_PDF_ATTACHMENTS, MAX_PDF_PAGES
 
 
 def gmail(source: bytes, **overrides) -> dict:
@@ -25,6 +30,41 @@ def gmail(source: bytes, **overrides) -> dict:
         "raw": base64.urlsafe_b64encode(source).decode().rstrip("="),
         **overrides,
     }
+
+
+def pdf_bytes(text: str = "", *, password: str | None = None, pages: int = 1) -> bytes:
+    writer = PdfWriter()
+    for _ in range(pages):
+        page = writer.add_blank_page(width=120, height=120)
+        if text:
+            font = DictionaryObject({
+                NameObject("/Type"): NameObject("/Font"),
+                NameObject("/Subtype"): NameObject("/Type1"),
+                NameObject("/BaseFont"): NameObject("/Helvetica"),
+            })
+            page[NameObject("/Resources")] = DictionaryObject({
+                NameObject("/Font"): DictionaryObject({NameObject("/F1"): font}),
+            })
+            literal = BytesIO()
+            TextStringObject(text).write_to_stream(literal)
+            stream = DecodedStreamObject()
+            stream.set_data(b"BT /F1 12 Tf 10 100 Td " + literal.getvalue() + b" Tj ET")
+            page.replace_contents(stream)
+    if password is not None:
+        writer.encrypt(password)
+    output = BytesIO()
+    writer.write(output)
+    return output.getvalue()
+
+
+def mail_with_pdfs(*files: bytes) -> dict:
+    message = EmailMessage(policy=SMTP)
+    message.set_content("Synthetic main body.")
+    for index, payload in enumerate(files, 1):
+        message.add_attachment(
+            payload, maintype="application", subtype="pdf", filename=f"sample-{index}.pdf"
+        )
+    return gmail(message.as_bytes())
 
 
 def test_korean_charset_headers_and_received_time():
@@ -56,7 +96,7 @@ def test_metadata_excludes_every_body_field():
     parsed = parse_gmail_message(demo_messages()[1])
     metadata = mail_metadata(parsed)
     assert metadata["body_hash"] == parsed["body_hash"]
-    assert not {"raw", "text_plain", "text_html", "analysis_text"} & metadata.keys()
+    assert not {"raw", "text_plain", "text_html", "analysis_text", "pdf_texts"} & metadata.keys()
     assert "analysis_text" in parsed
 
 
@@ -104,6 +144,60 @@ def test_attachment_body_is_not_ingested_or_returned():
         b"SYNTHETIC FIXTURE ONLY. This attachment is not analyzed.\n"
     )
     assert not {"payload", "data", "raw"} & meta.keys()
+    assert "pdf_status" not in meta
+    assert parsed["pdf_texts"] == []
+
+
+def test_pdf_attachment_text_keeps_attachment_order_and_stays_out_of_metadata():
+    texts = ["Synthetic receipt number", "Synthetic delivery date"]
+    parsed = parse_gmail_message(mail_with_pdfs(*(pdf_bytes(text) for text in texts)))
+
+    assert parsed["pdf_texts"] == texts
+    assert "Synthetic main body." in parsed["analysis_text"]
+    assert "attachment_content_not_analyzed" not in parsed["warnings"]
+    assert [attachment["pdf_status"] for attachment in parsed["attachments"]] == [
+        "parsed", "parsed"
+    ]
+    assert all(text not in str(mail_metadata(parsed)) for text in texts)
+
+
+def test_pdf_failure_keeps_body_and_successful_attachment_text():
+    parsed = parse_gmail_message(mail_with_pdfs(
+        b"%PDF-1.7\nIncomplete PDF fixture\n",
+        pdf_bytes(password="synthetic-password"),
+        pdf_bytes(),
+        pdf_bytes("Synthetic receipt number"),
+    ))
+
+    assert "Synthetic main body." in parsed["text_plain"]
+    assert parsed["pdf_texts"] == ["Synthetic receipt number"]
+    assert [attachment["pdf_status"] for attachment in parsed["attachments"]] == [
+        "invalid", "encrypted", "no_text", "parsed"
+    ]
+    assert "attachment_content_not_analyzed" in parsed["warnings"]
+
+
+def test_pdf_attachment_count_and_page_limits_are_reported():
+    oversized = pdf_bytes(pages=MAX_PDF_PAGES + 1)
+    parsed = parse_gmail_message(mail_with_pdfs(
+        oversized, *([b"not a PDF"] * (MAX_PDF_ATTACHMENTS - 1)), pdf_bytes("Skipped fixture")
+    ))
+
+    assert parsed["attachments"][0]["pdf_status"] == "limit"
+    assert parsed["attachments"][-1]["pdf_status"] == "limit"
+    assert parsed["pdf_texts"] == []
+
+
+def test_pdf_attachments_share_text_budget(monkeypatch):
+    monkeypatch.setattr(mail, "MAX_PDF_TEXT_CHARS", 20)
+    parsed = parse_gmail_message(mail_with_pdfs(
+        pdf_bytes("Today schedule"), pdf_bytes("Tomorrow schedule")
+    ))
+
+    assert parsed["pdf_texts"] == ["Today schedule"]
+    assert [attachment["pdf_status"] for attachment in parsed["attachments"]] == [
+        "parsed", "limit"
+    ]
 
 
 def test_named_text_and_forwarded_messages_remain_attachments():

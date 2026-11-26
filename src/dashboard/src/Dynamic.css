@@ -78,6 +78,7 @@
 .dynamic-key-outside { width: 13px; height: 13px; border: 1.5px solid var(--field); border-radius: 4px; background: var(--surface); }
 .dynamic-key-visited { width: 17px; height: 2px; background: var(--safe-text); }
 .dynamic-flow-help { color: var(--muted); font-size: 0.75rem; line-height: 1.6; margin: 0 0 var(--space-4); }
+.dynamic-flow-motion-control { margin-block-end: var(--space-3); font-size: 0.75rem; }
 .dynamic-graph { overflow-x: auto; padding: var(--space-3) 0; background: var(--surface-2); border: 1px solid var(--border); border-radius: 16px; }
 .dynamic-graph:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 .dynamic-graph svg { display: block; width: 100%; min-width: 1000px; }
@@ -92,6 +93,12 @@
 .dynamic-edge { fill: none; stroke: var(--field); stroke-width: 1.5; stroke-dasharray: 5 5; stroke-linejoin: round; }
 .dynamic-edge.visited { stroke: var(--safe-text); stroke-width: 2; stroke-dasharray: none; }
 .dynamic-edge.visited.abnormal { stroke: var(--danger-text); }
+.dynamic-edge-pulse { fill: none; stroke: var(--surface); stroke-width: 2; stroke-linecap: round; stroke-dasharray: 5 22; pointer-events: none; animation: dynamic-flow-pulse 1.4s linear infinite; }
+.motion-paused .dynamic-edge-pulse { animation-play-state: paused; }
+@keyframes dynamic-flow-pulse { to { stroke-dashoffset: -27; } }
+@media (prefers-reduced-motion: reduce) {
+  .dynamic-edge-pulse, .dynamic-flow-motion-control { display: none; }
+}
 .dynamic-node { cursor: pointer; outline: none; }
 .dynamic-node rect { fill: var(--surface); stroke: var(--field); }
 .dynamic-node text { fill: var(--ink); text-anchor: middle; font-size: 0.875rem; font-weight: 600; }

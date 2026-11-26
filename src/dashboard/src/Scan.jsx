@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { detect } from './rules'
 import { shortType } from './Verdict'
+import FileScan from './FileScan.jsx'
 
 const SAMPLES = {
   '정상 메일': `<p>안녕하세요, 10월 회의 일정 공유드립니다.</p>
@@ -32,10 +33,12 @@ export default function Scan({ rules }) {
     <>
       <header className="page-head"><h1>메일 검사</h1></header>
 
+      <FileScan />
+
       <section className="split">
         <div className="panel">
           <div className="panel-head">
-            <h2><label htmlFor="mail-html">메일 HTML</label></h2>
+            <h2><label htmlFor="mail-html">HTML 규칙 데모</label></h2>
             <div className="ctl-row">
               <select aria-label="샘플 메일" value={sample} onChange={(e) => setSample(e.target.value)}>
                 <option value="">샘플 고르기</option>

@@ -1,8 +1,9 @@
 import { useEffect, useRef } from 'react'
-import { scoreReason } from './api'
+import { pdfResultLabel, scoreReason } from './api'
 import { TYPES } from './rules'
 import { Badge, CloseIcon, Mark, STATES, fmtShort, fmtTime, stateOf } from './ui'
-import { dynamicError, dynamicLabel, dynamicStatus } from './dynamicState'
+import { canStartDynamic, dynamicError, dynamicStatus } from './dynamicState'
+import { isPromoted } from './inboxState'
 
 // 항목별 한 줄 설명. "AI는 안 보이는 것도 읽는다"는 목록 위 한 줄(lead)에서 한 번만 말함
 const EXPLAIN = {
@@ -52,6 +53,7 @@ export function shortReason(r) {
   const state = stateOf(r)
   if (state === 'failed') return r.status_detail ?? '판정 결과 없음'
   if (state === 'pending') return r.status === 'incomplete' ? '검사 전 · 일부 못 가져옴' : '검사 전'
+  if (isPromoted(r)) return '동적 검사에서 이상 행동 관찰'
   if (r.evidence.length) return shortType(r.evidence[0].type) + (r.evidence.length > 1 ? ` 외 ${r.evidence.length - 1}곳` : '')
   if (state === 'incomplete') return `${r.missing_parts[0]} 못 가져옴`
   if (state === 'safe') return '숨은 명령 없음'
@@ -103,36 +105,51 @@ function Score({ r }) {
 const COUNTS = [['deviations', '작업과 무관한 도구 요청'], ['file_changes', '테스트 파일 변경'],
   ['marker_received', '외부 수신 표식'], ['simulated_send_requests', '모의 메일 전송']]
 
+const PDF_STATUS = {
+  parsed: 'PDF 텍스트 추출 완료',
+  encrypted: '암호화된 PDF',
+  invalid: '읽을 수 없는 PDF',
+  no_text: 'PDF에서 텍스트를 찾지 못함',
+  limit: 'PDF 처리 한도 초과',
+}
+
 // 동적 검사 요약. 예시 메일(r.title)에는 안 붙임
-function DynamicSection({ r }) {
+function DynamicSection({ r, onStartDynamic }) {
   const job = r.dynamic
   const { phase, label, note, runnable } = dynamicStatus(r)
-  const attachments = job?.attachments_count ?? r.attachments_count ?? 0
+  const manual = job?.source === 'gmail_manual'
+  const canStart = runnable || (manual && canStartDynamic(r))
   return (
     <section className="dyn-detail" aria-labelledby="dyn-title">
       <h3 className="sec-title" id="dyn-title">동적 검사</h3>
       <table className="info">
         <tbody>
-          <tr><th scope="row">상태</th><td><span className={`tag dyn-${phase}${job?.observation === 'observed' ? ' dyn-alert' : ''}`}>{label}</span><p className="sub">{note}</p></td></tr>
-          {phase === 'done' && job.counts && (
+          <tr><th scope="row">상태</th><td><span role="status" className={`tag dyn-${phase}${job?.observation === 'observed' ? ' dyn-alert' : ''}`}>
+            {r.dynamicSubmitting && !job ? '검사 등록 중' : label}</span>
+            {manual && <p className="sub">수동 실험 결과</p>}
+            {(!r.dynamicSubmitting || job) && <p className="sub">{note}</p>}</td></tr>
+          {job?.counts && (phase === 'done' || job.observation === 'observed') && (
             <tr><th scope="row">관찰한 행동</th><td>
               <ul className="plain">{COUNTS.map(([k, name]) => <li key={k}>{name} <b>{job.counts[k] ?? 0}건</b></li>)}</ul>
             </td></tr>
           )}
           {job?.error_code && <tr><th scope="row">원인</th><td>{dynamicError(job.error_code)}</td></tr>}
-          {/* ponytail: 첨부 판정(#61)이 생기면 이 행에 판정을 채움. 지금은 미검사만 알림 */}
-          {attachments > 0 && <tr><th scope="row">첨부파일</th><td>{attachments}개 · 내용은 아직 검사하지 않아요.</td></tr>}
+          {r.dynamicSubmitError && <tr><th scope="row">등록 오류</th><td><span className="error" role="alert">{r.dynamicSubmitError}</span></td></tr>}
         </tbody>
       </table>
+      {canStart && onStartDynamic && <p className="dyn-link"><button type="button" className="btn" disabled={r.dynamicSubmitting}
+        onClick={() => onStartDynamic(r)}>{r.dynamicSubmitting ? '등록 중…' : '이 메일 동적 검사 시작'}</button></p>}
       {job ? <p className="dyn-link"><a href={`#/dynamic?job=${encodeURIComponent(job.id)}`}>동적 검사 결과·근거 자세히 보기</a></p>
-        : runnable && <p className="dyn-link"><a href="#/dynamic">동적 검사 페이지로 가기</a></p>}
+        : runnable && <p className="dyn-link"><a href="#/dynamic">동적 검사 설정</a></p>}
     </section>
   )
 }
 
 // 순서: ① 판정 띠(상태색은 여기와 라벨에만) → ② 정보 표 → ③ 할 일 → ④ 찾은 부분
-export function VerdictDetail({ r }) {
+export function VerdictDetail({ r, onStartDynamic }) {
   const state = stateOf(r)
+  const promoted = isPromoted(r)
+  const modelReason = scoreReason(r)
   const partial = r.status !== 'ok' && (state === 'danger' || state === 'suspicious')
   const advice = partial && r.status === 'incomplete' ? [...ADVICE[state], ADVICE.incomplete[1]] : ADVICE[state]
   const n = r.evidence.length
@@ -140,17 +157,21 @@ export function VerdictDetail({ r }) {
   return (
     <div className="verdict">
       <div className={`band ${state}`}>
-        <p className="band-state"><Mark v={state} size={20} />{STATES[state].label}</p>
-        <p>{SUMMARY[state]}</p>
+        <p className="band-state"><Mark v={state} size={20} />{!r.title && '최종 판정 · '}{STATES[state].label}</p>
+        <p>{promoted ? '동적 검사에서 이상 행동이 관찰됐어요. AI에게 맡기지 마세요.' : SUMMARY[state]}</p>
       </div>
 
-      {!r.title && <DynamicSection r={r} />}
+      {!r.title && <DynamicSection r={r} onStartDynamic={onStartDynamic} />}
 
       <table className="info">
         <tbody>
           {r.subject && <tr><th scope="row">제목</th><td><b>{r.subject}</b></td></tr>}
           {r.sender && <tr><th scope="row">보낸 사람</th><td className="mono">{r.sender}</td></tr>}
           {r.received_at && <tr><th scope="row">받은 시각</th><td>{fmtTime(r.received_at)}</td></tr>}
+          {r.attachments?.length > 0 && <tr><th scope="row">첨부파일</th><td><ul className="plain">
+            {r.attachments.map((file, i) => <li key={i}>{file.filename || '(이름 없음)'} · {PDF_STATUS[file.pdf_status] ?? '내용 검사 제외'}
+              {file.pdf_status === 'parsed' && <> · {pdfResultLabel(r.pdf_results, i)}</>}</li>)}
+          </ul></td></tr>}
           {r.llm_reason && <tr><th scope="row">문맥 분석</th><td>{r.llm_reason}</td></tr>}
           {r.status === 'incomplete' && r.missing_parts.length > 0 && (
             <tr><th scope="row">검사 못 한 부분</th><td>
@@ -159,8 +180,10 @@ export function VerdictDetail({ r }) {
             </td></tr>
           )}
           {(state === 'failed' || r.status === 'failed') && <tr><th scope="row">원인</th><td>{r.status_detail ?? '판정 결과가 없어요.'}</td></tr>}
-          {[r.final_score, r.static_score, r.llm_score].some((score) => score != null) && (
-            <tr><th scope="row">탐지 모델 출력</th><td><Score r={r} />{scoreReason(r) && <p className="sub">{scoreReason(r)}</p>}</td></tr>
+          {promoted ? (
+            <tr><th scope="row">본문 정적 판정</th><td>의심{r.static_score != null && ` · ${r.static_score}점`}{modelReason && <p className="sub">{modelReason}</p>}</td></tr>
+          ) : [r.final_score, r.static_score, r.llm_score].some((score) => score != null) && (
+            <tr><th scope="row">탐지 모델 출력</th><td><Score r={r} />{modelReason && <p className="sub">{modelReason}</p>}</td></tr>
           )}
         </tbody>
       </table>
@@ -174,7 +197,7 @@ export function VerdictDetail({ r }) {
 
       <h3 className="sec-title" id="evidence">찾은 부분{n > 0 && <span className="n">{n}곳</span>}</h3>
       {n === 0 ? (
-        <p className="no-evidence">{NO_EVIDENCE[state]}</p>
+        <p className="no-evidence">{promoted ? '본문에서 짚어낼 문장은 없어요. 동적 검사 결과에서 관찰 근거를 확인할 수 있어요.' : NO_EVIDENCE[state]}</p>
       ) : (
         <>
           <p className="lead">화면엔 안 보이지만 AI는 그대로 읽는 내용이에요.</p>
@@ -198,7 +221,7 @@ export function VerdictDetail({ r }) {
 }
 
 // 대시보드와 판정 안내가 같이 쓰는 상세 드로어. 네이티브 <dialog> 라 포커스 가두기·되돌리기·Esc 가 기본으로 됨
-export function MailDrawer({ r, onClose }) {
+export function MailDrawer({ r, onClose, onStartDynamic }) {
   const ref = useRef(null)
   useEffect(() => { ref.current.showModal() }, [])
   // close 이벤트(비동기)에 기대지 않고 바로 닫음. close() 가 열기 전 포커스를 되돌려 줌
@@ -211,7 +234,7 @@ export function MailDrawer({ r, onClose }) {
         {r.title && <><span className="tag">예시</span><span className="drawer-note">{r.title}</span></>}
         <button type="button" className="icon-btn" onClick={close} aria-label="닫기" autoFocus><CloseIcon /></button>
       </header>
-      <div className="drawer-body"><VerdictDetail r={r} /></div>
+      <div className="drawer-body"><VerdictDetail r={r} onStartDynamic={onStartDynamic} /></div>
     </dialog>
   )
 }

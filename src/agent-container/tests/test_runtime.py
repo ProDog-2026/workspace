@@ -20,7 +20,7 @@ def test_runtime_keeps_container_and_passes_token_only_through_stdin(monkeypatch
         def shutdown(self,*a):pass
         def close(self):pass
     class Container:
-        id="container-id";status="exited"
+        id="container-id";status="running"
         attrs={"State":{"ExitCode":0}}
         removed=False
         def start(self):pass
@@ -34,8 +34,13 @@ def test_runtime_keeps_container_and_passes_token_only_through_stdin(monkeypatch
                 if wrapped:
                     raise ConnectionError(ReadTimeoutError(None, "/logs", "SYNTHETIC_DOCKER_BODY"))
                 raise ReadTimeout("SYNTHETIC_DOCKER_BODY")
-            return b'{"event_type":"final","completion":"completed"}\n'
-        def reload(self):pass
+            output = b'{"event_type":"llm_response"}\n'
+            if self.status == "exited":
+                output += b'{"event_type":"final","completion":"completed"}\n'
+            return output
+        def reload(self):
+            # The worker can write its last line and exit between Docker API calls.
+            self.status = "exited"
         def get_archive(self,path):return [stream.getvalue()],{}
     c=Container()
     class Containers:
@@ -61,6 +66,8 @@ def test_runtime_keeps_container_and_passes_token_only_through_stdin(monkeypatch
         return
     files,errors,receipts,code=DockerRuntime().execute(run,events.append)
     assert files["summary.txt"]=="ok" and not errors and code==0
+    assert [event["event_type"] for event in events] == ["llm_response", "final"]
+    assert events[-1]["completion"] == "completed"
     assert json.loads(sent[0])["token"]==created["execution_token"]
     assert not c.removed
 

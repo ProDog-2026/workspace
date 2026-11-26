@@ -1,7 +1,7 @@
 import { useEffect, useId, useState } from 'react'
 import '../../agent-container/control-dashboard/frontend/presentation.js'
 import { dynamicLabel, dynamicError } from './dynamicState'
-import { containerBounds, flowEdgePath, flowLayout, graphWidth } from './flowGeometry'
+import { activeFlowEdge, containerBounds, flowEdgePath, flowLayout, graphWidth } from './flowGeometry'
 
 const view = globalThis.DashboardPresentation
 export const format = (value) => typeof value === 'string' ? value : JSON.stringify(value, null, 2)
@@ -14,12 +14,17 @@ function Fields({ fields }) {
 
 export function DynamicResult({ job, result, onEvidence }) {
   const data = result ? view.describeResult(result) : null
+  const pdfCount = job.pdf_attachments_count ?? 0
+  const excludedCount = (job.attachments_count ?? 0) - pdfCount
+  const limits = [job.truncated && '본문 잘림', excludedCount > 0 && `첨부파일 ${excludedCount}개 내용 제외`,
+    ...(job.warnings ?? []).filter((warning) => warning !== 'attachment_content_not_analyzed')].filter(Boolean)
   return <section className="panel">
     <div className="panel-head"><h2>분석 결과</h2><span className={`dynamic-badge ${job.observation === 'observed' ? 'alert' : ''}`}>{dynamicLabel(job)}</span></div>
     <div className="panel-body dynamic-stack">
-      {job.static_detection && <p className="dynamic-notice">1차 판정: <b>{job.static_detection.verdict === 'danger' ? '위험' : '의심'}</b> · {job.static_detection.static_score}점. 동적 검사 결과와 별도로 유지합니다.</p>}
+      {job.static_detection && <p className="dynamic-notice">1차 판정{job.static_detection.source === 'pdf' ? ' (PDF)' : ''} · <b>{job.static_detection.verdict === 'danger' ? '위험' : '의심'}</b> · {job.static_detection.static_score}점</p>}
       {job.source === 'gmail_manual' && <p className="dynamic-notice">사용자가 선택한 메일의 수동 검사입니다. 1차 분류는 수행하지 않았습니다.</p>}
-      {(job.truncated || job.attachments_count > 0 || job.warnings?.length > 0) && <p className="dynamic-notice">일부만 검사: {job.truncated ? '본문 잘림 · ' : ''}{job.attachments_count ? `첨부파일 ${job.attachments_count}개 내용 제외 · ` : ''}{job.warnings?.join(', ')}</p>}
+      {pdfCount > 0 && <p className="note">PDF 첨부파일 {pdfCount}개에서 추출한 텍스트를 검사 입력에 포함했어요.</p>}
+      {limits.length > 0 && <p className="dynamic-notice">일부만 검사 · {limits.join(' · ')}</p>}
       {job.error_code && <p role="status" className="dynamic-notice">{dynamicError(job.error_code)}</p>}
       {!data ? <p className="muted">검사가 끝나면 요약과 확인된 증거가 여기에 표시됩니다.</p> : <>
         <div className="dynamic-metrics">
@@ -94,10 +99,12 @@ export function DynamicEvents({ events, selectedEvent }) {
 
 export function DynamicFlow({ flow, runtimeMode }) {
   const [selected, setSelected] = useState(null)
+  const [motionPaused, setMotionPaused] = useState(false)
   const arrowId = `dynamic-arrow-${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`
   if (!flow) return <section className="panel"><div className="panel-head"><h2>데이터 흐름</h2></div><p className="empty">실행이 시작되면 단계별 흐름을 표시합니다.</p></section>
   const step = flow.steps.find((s) => s.index === selected) ?? flow.steps.at(-1)
   const nodes = new Map(flow.nodes.map((node) => [node.id, node]))
+  const activeEdge = activeFlowEdge(flow)
   const { positions, height } = flowLayout(flow.nodes)
   const pick = (id) => setSelected(flow.steps.findLast((s) => s.node === id)?.index ?? null)
   const areaTitle = runtimeMode === 'docker' ? '작업 컨테이너' : '작업 실행 영역'
@@ -109,7 +116,8 @@ export function DynamicFlow({ flow, runtimeMode }) {
       {flow.anomalies?.length > 0 && <p className="dynamic-notice">{flow.anomalies.join(' · ')}</p>}
       <div className="dynamic-flow-key"><span><i className="dynamic-key-boundary" aria-hidden="true" /> {areaTitle}</span><span><i className="dynamic-key-outside" aria-hidden="true" /> 제어 서버 · 외부 LLM</span><span><i className="dynamic-key-visited" aria-hidden="true" /> 통과한 흐름</span></div>
       <p className="dynamic-flow-help">{runtimeMode === 'host_process_no_docker' ? '이 기록은 Docker 없이 호스트에서 실행되었습니다. LLM 요청은 제어 서버를 거쳐 Ollama로 전달됩니다.' : 'LLM 요청은 제어 서버를 거쳐 Ollama로 전달됩니다. 경계는 실행 구조를 나타내며, 네트워크 격리 검증 결과는 별도입니다.'}</p>
-      <div className="dynamic-graph" role="region" aria-label="데이터 흐름 그래프, 가로로 스크롤 가능" tabIndex={0}><svg viewBox={`0 0 ${graphWidth} ${height}`} role="group" aria-label="동적 검사 데이터 흐름">
+      {activeEdge && <button type="button" className="btn dynamic-flow-motion-control" onClick={() => setMotionPaused((paused) => !paused)}>{motionPaused ? '흐름 애니메이션 재생' : '흐름 애니메이션 일시정지'}</button>}
+      <div className={`dynamic-graph ${motionPaused ? 'motion-paused' : ''}`} role="region" aria-label="데이터 흐름 그래프, 가로로 스크롤 가능" tabIndex={0}><svg viewBox={`0 0 ${graphWidth} ${height}`} role="group" aria-label="동적 검사 데이터 흐름">
         <defs><marker id={arrowId} markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0 0 L7 3.5 L0 7" fill="context-stroke" /></marker></defs>
         <g aria-hidden="true">
           <text x="30" y="72" className="dynamic-graph-section">01 · 실행 요청</text>
@@ -130,7 +138,7 @@ export function DynamicFlow({ flow, runtimeMode }) {
         </g>
         {flow.edges.map((edge, i) => {
           const path = flowEdgePath(edge, positions)
-          return path && <path key={i} d={path} markerEnd={`url(#${arrowId})`} className={`dynamic-edge ${edge.count ? 'visited' : ''} ${edge.abnormal ? 'abnormal' : ''}`}><title>{edge.label || `${nodes.get(edge.source)?.title} → ${nodes.get(edge.target)?.title}`} · 통과 {edge.count ?? 0}회</title></path>
+          return path && <g key={i}><path d={path} markerEnd={`url(#${arrowId})`} className={`dynamic-edge ${edge.count ? 'visited' : ''} ${edge.abnormal ? 'abnormal' : ''}`}><title>{edge.label || `${nodes.get(edge.source)?.title} → ${nodes.get(edge.target)?.title}`} · 통과 {edge.count ?? 0}회</title></path>{edge.count > 0 && edge.source === activeEdge?.source && edge.target === activeEdge?.target && <path d={path} className="dynamic-edge-pulse" aria-hidden="true" />}</g>
         })}
         {flow.nodes.map((node) => {
           const [x, y] = positions.get(node.id), current = flow.current === node.id

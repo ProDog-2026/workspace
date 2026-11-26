@@ -37,7 +37,7 @@ export default function Dashboard({ onReload }) {
   const [error, setError] = useState(null)
   const [next, setNext] = useState(null) // Gmail 다음 페이지 토큰. 없으면 끝
   const [more, setMore] = useState({ busy: false, error: '' })
-  const dynamicNotice = useDynamicInbox(scans, setScans)
+  const { notice: dynamicNotice, startDynamic } = useDynamicInbox(scans, setScans)
 
   const load = (token) => gmail(`/api/mails?limit=${LIMIT}` + (token ? `&page_token=${encodeURIComponent(token)}` : ''))
     .then((d) => {
@@ -173,7 +173,8 @@ export default function Dashboard({ onReload }) {
         )}
       </section>
 
-      {selected && <MailDrawer r={scans.find((r) => r.id === selected.id) ?? selected} onClose={() => setSelected(null)} />}
+      {selected && <MailDrawer r={scans.find((r) => r.id === selected.id) ?? selected}
+        onStartDynamic={startDynamic} onClose={() => setSelected(null)} />}
     </>
   )
 }

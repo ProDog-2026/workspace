@@ -19,9 +19,10 @@ from .deployment import Deployment
 from .dynamic import DynamicService
 from .dynamic_api import install_dynamic_routes
 from .errors import ConnectorError
+from .file_scan import FileScanInput, scan_file
 from .google import GoogleClient
 from .mail import mail_metadata, parse_gmail_message
-from .scan import load_detector, model_key, scan_mail
+from .scan import cacheable_detection, load_detector, model_key, scan_mail
 from .store import Store
 from .supabase import Supabase
 
@@ -292,7 +293,7 @@ def create_app(settings: Settings | None = None, transport=None, dynamic_transpo
             # Fixed codes only; authorization code, state, and upstream errors never enter URLs.
             return RedirectResponse(config.dashboard_url + "/?error=" + exc.code, status_code=303)
 
-    async def get_mail(current: dict, message_id: str):
+    async def get_mail(current: dict, message_id: str, *, save_metadata: bool = True):
         if not MESSAGE_ID.fullmatch(message_id):
             raise ConnectorError("invalid_message_id", "올바른 메일 ID가 아닙니다.")
         if current["mode"] == "demo":
@@ -301,8 +302,12 @@ def create_app(settings: Settings | None = None, transport=None, dynamic_transpo
                 raise ConnectorError("mail_not_found", "메일을 찾을 수 없습니다.", 404)
         else:
             raw = await application.state.google.message(current["account_id"], message_id)
-        parsed = parse_gmail_message(raw)
-        application.state.store.save_metadata(current["account_id"], mail_metadata(parsed))
+        parsed = await asyncio.to_thread(parse_gmail_message, raw)
+        if save_metadata:
+            # A detail fetch or worker retry must not change the scope of a saved scan.
+            application.state.store.save_metadata(
+                current["account_id"], mail_metadata(parsed), preserve_scan=True
+            )
         return parsed
 
     async def load_page(current: dict, limit: int, page_token: str | None):
@@ -337,12 +342,14 @@ def create_app(settings: Settings | None = None, transport=None, dynamic_transpo
                 return {**hit, "dynamic": dynamic}
             async with semaphore:
                 try:
-                    parsed = await get_mail(current, message_id)
+                    parsed = await get_mail(current, message_id, save_metadata=False)
+                    metadata = mail_metadata(parsed)
                     detection = scan_mail(detector, parsed)
-                    if detection is None or detection["status"] == "ok":  # Never cache failures.
+                    store.save_metadata(current["account_id"], metadata)
+                    if cacheable_detection(detection):
                         store.save_scan(current["account_id"], message_id, key, detection)
                     return {
-                        **mail_metadata(parsed),
+                        **metadata,
                         "detection": detection,
                         "dynamic": latest_dynamic(
                             current["account_id"], message_id, parsed["body_hash"]
@@ -383,10 +390,26 @@ def create_app(settings: Settings | None = None, transport=None, dynamic_transpo
         limit_requests(secret, "list", 30)
         return await load_page(current, limit, page_token)
 
+    @application.post("/api/scan/file")
+    async def scan_uploaded_file(request: Request, body: FileScanInput):
+        secret, _ = csrf(request)
+        if application.state.settings.app_mode == "google":
+            session(request, required=True)
+        limit_requests(secret, "file_scan", 30)
+        if application.state.detector is None:
+            raise ConnectorError(
+                "detector_not_configured", "정적 검사 모델이 연결되지 않았습니다.", 503
+            )
+        return await asyncio.to_thread(scan_file, body, application.state.detector)
+
     def latest_dynamic(owner, message_id, body_hash):
         service = application.state.dynamic
-        job = next((j for j in service.db.listing(owner)
-                    if j.get("mail_id") == message_id and j.get("body_hash") == body_hash), None)
+        matches = [
+            j for j in service.db.listing(owner)
+            if j.get("mail_id") == message_id and j.get("body_hash") == body_hash
+        ]
+        job = next((j for j in matches if j.get("source") == "gmail"),
+                   matches[0] if matches else None)
         return service.db.public(job)
 
     cancel_dynamic = install_dynamic_routes(application, session, csrf, limit_requests, get_mail)
@@ -414,7 +437,10 @@ def create_app(settings: Settings | None = None, transport=None, dynamic_transpo
     async def mail_detail(request: Request, message_id: str):
         secret, current = session(request, required=True)
         limit_requests(secret, "detail", 120)
-        return await get_mail(current, message_id)
+        parsed = await get_mail(current, message_id)
+        session(request, required=True)
+        parsed.pop("pdf_texts", None)
+        return parsed
 
     @application.post("/api/disconnect")
     async def disconnect(request: Request):
