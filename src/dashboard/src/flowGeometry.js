@@ -1,6 +1,12 @@
 // Layout describes the execution boundary; graph topology and counts still come from the API.
 export const containerBounds = { x: 710, y: 58, width: 430, height: 470, nodeWidth: 176, nodeHeight: 64 }
 export const graphWidth = 1180
+
+// The trace ends at the waiting node; completed traces have no active edge.
+export function activeFlowEdge(flow) {
+  if (!flow.current || flow.done || !flow.path?.length || flow.path.at(-1) !== flow.current) return null
+  return { source: flow.path.at(-2) ?? '__start__', target: flow.current }
+}
 const positionsById = {
   __start__: [30, 110], submit_request: [230, 110], launch_run: [430, 110],
   spawn_container: [770, 110], llm_gateway: [430, 275], execute_tools: [770, 275],

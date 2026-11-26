@@ -13,7 +13,8 @@ from fastapi.responses import JSONResponse
 from .dynamic import ACTIVE
 from .dynamic_models import DynamicSettings, PromptInput, TestEmail, local_url
 from .errors import ConnectorError
-from .mail import mail_metadata
+from .file_scan import decode_file
+from .mail import MAX_RAW_BYTES, mail_metadata, parse_gmail_message
 from .pdf_text import MAX_PDF_BYTES, MAX_PDF_TEXT_CHARS, extract_pdf_text
 from .scan import cacheable_detection, model_key, scan_mail
 
@@ -212,6 +213,44 @@ def install_dynamic_routes(app, session, csrf, limit_requests, get_mail):
     @app.post("/api/dynamic/experiments", status_code=202)
     async def experiment(request: Request, body: TestEmail):
         owner, _ = identity(request, write=True)
+        pdf_messages = {
+            "invalid": "올바른 PDF 파일을 선택하세요.",
+            "encrypted": "암호화된 PDF는 사용할 수 없습니다.",
+            "no_text": "PDF에서 텍스트를 찾지 못했습니다.",
+            "limit": "PDF 처리 한도를 초과했습니다.",
+        }
+        if body.eml:
+            raw = decode_file(body.eml, ".eml", MAX_RAW_BYTES)
+            if not re.match(br"[!-9;-~]+:[^\r\n]*\r?\n", raw) or not re.search(br"\r?\n\r?\n", raw):
+                raise ConnectorError("invalid_eml", "올바른 EML 파일을 선택하세요.", 422)
+            supplemental = None
+            if body.pdf:
+                pdf_payload = decode_file(body.pdf, ".pdf", MAX_PDF_BYTES)
+                status, _ = await asyncio.to_thread(
+                    extract_pdf_text, pdf_payload, MAX_PDF_TEXT_CHARS
+                )
+                if status != "parsed":
+                    raise ConnectorError("pdf_" + status, pdf_messages[status], 422)
+                supplemental = (body.pdf.filename, pdf_payload)
+            parsed = await asyncio.to_thread(
+                parse_gmail_message,
+                {"raw": base64.urlsafe_b64encode(raw).decode()},
+                supplemental_pdf=supplemental,
+            )
+            if parsed["body_hash"] is None:
+                raise ConnectorError("invalid_eml", "EML 파일을 읽을 수 없습니다.", 422)
+            email = app.state.dynamic.email_input(parsed, pdf_texts=parsed["pdf_texts"])
+            if not email["subject"]:
+                email["subject"] = body.eml.filename
+            meta = {
+                "warnings": parsed["warnings"],
+                "truncated": parsed["truncated"],
+                "attachments_count": len(parsed["attachments"]),
+                "pdf_attachments_count": len(parsed["pdf_texts"]),
+            }
+            return {"job": await app.state.dynamic.enqueue(
+                owner, email=email, experiment_meta=meta
+            )}
         email = {"subject": body.subject, "body": body.body}
         if body.pdf:
             try:
@@ -222,13 +261,7 @@ def install_dynamic_routes(app, session, csrf, limit_requests, get_mail):
                 raise ConnectorError("pdf_limit", "PDF는 1MB 이하여야 합니다.", 422)
             status, text = await asyncio.to_thread(extract_pdf_text, payload, MAX_PDF_TEXT_CHARS)
             if status != "parsed":
-                messages = {
-                    "invalid": "올바른 PDF 파일을 선택하세요.",
-                    "encrypted": "암호화된 PDF는 사용할 수 없습니다.",
-                    "no_text": "PDF에서 텍스트를 찾지 못했습니다.",
-                    "limit": "PDF 처리 한도를 초과했습니다.",
-                }
-                raise ConnectorError("pdf_" + status, messages[status], 422)
+                raise ConnectorError("pdf_" + status, pdf_messages[status], 422)
             email["body"] += "\n\nUNTRUSTED PDF ATTACHMENT 1\n" + text
         return {"job": await app.state.dynamic.enqueue(
             owner, email=email, experiment_pdf=bool(body.pdf)

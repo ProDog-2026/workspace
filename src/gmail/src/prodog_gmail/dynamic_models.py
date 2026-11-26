@@ -2,7 +2,13 @@
 
 from urllib.parse import urlsplit
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from .mail import MAX_RAW_BYTES
+from .pdf_text import MAX_PDF_BYTES
+
+_MAX_EML_B64 = 4 * ((MAX_RAW_BYTES + 2) // 3)
+_MAX_PDF_B64 = 4 * ((MAX_PDF_BYTES + 2) // 3)
 
 
 def local_url(value, *, docker_host=False):
@@ -50,24 +56,30 @@ class DynamicSettings(BaseModel):
         return value.strip()
 
 
+class ExperimentEml(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    filename: str = Field(min_length=1, max_length=255)
+    data: str = Field(min_length=1, max_length=_MAX_EML_B64)
+
+
 class ExperimentPdf(BaseModel):
     model_config = ConfigDict(extra="forbid")
     filename: str = Field(min_length=1, max_length=255)
-    data: str = Field(min_length=1, max_length=1_398_104)
+    data: str = Field(min_length=1, max_length=_MAX_PDF_B64)
 
 
 class TestEmail(BaseModel):
     model_config = ConfigDict(extra="forbid")
     subject: str = Field(default="", max_length=4096)
-    body: str = Field(min_length=1, max_length=300000)
+    body: str = Field(default="", max_length=300000)
+    eml: ExperimentEml | None = None
     pdf: ExperimentPdf | None = None
 
-    @field_validator("body")
-    @classmethod
-    def nonempty(cls, value):
-        if not value.strip():
-            raise ValueError("Email body required")
-        return value
+    @model_validator(mode="after")
+    def require_body_or_eml(self):
+        if self.eml is None and not self.body.strip():
+            raise ValueError("Email body or EML file required")
+        return self
 
 
 class PromptInput(BaseModel):

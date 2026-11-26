@@ -86,8 +86,9 @@ class DockerRuntime:
             poll_timeouts = 0
             while True:
                 try:
-                    logs = container.logs(stdout=True, stderr=False)
+                    # Check state first so the last read includes logs written just before exit.
                     container.reload()
+                    logs = container.logs(stdout=True, stderr=False)
                     poll_timeouts = 0
                 except (ReadTimeout, RequestsConnectionError) as exc:
                     if not is_read_timeout(exc):

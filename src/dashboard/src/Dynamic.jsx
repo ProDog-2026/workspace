@@ -16,12 +16,13 @@ const DEPLOY_ERRORS = {
   connection_failed: '배포 후 서버 또는 수신 서비스에 연결하지 못했습니다. Docker 컨테이너 상태를 확인하세요.',
 }
 const CHECK_MESSAGES = { ready: '모델 연결과 도구 호출 확인 완료', limit_reached: '응답 토큰 한도 도달', tool_call_not_verified: '연결됐지만 도구 호출 미확인', tool_roundtrip_not_verified: '도구 결과 전달 뒤 최종 응답 미확인' }
+const EML_LIMIT = 2 * 1024 * 1024
 const PDF_LIMIT = 1024 * 1024
 
-function readPdf(file) {
+function readBase64File(file, label = '파일') {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
-    reader.onerror = () => reject(new Error('PDF 파일을 읽지 못했습니다. 다시 선택해 주세요.'))
+    reader.onerror = () => reject(new Error(`${label}을 읽지 못했습니다. 다시 선택해 주세요.`))
     reader.onload = () => resolve(reader.result.split(',')[1])
     reader.readAsDataURL(file)
   })
@@ -79,6 +80,13 @@ export default function Dynamic() {
   const [pdfError, setPdfError] = useState('')
   const [experimentError, setExperimentError] = useState('')
   const experimentPdfInput = useRef(null)
+  const [emlFile, setEmlFile] = useState(null)
+  const [emlPdf, setEmlPdf] = useState(null)
+  const [emlError, setEmlError] = useState('')
+  const [emlPdfError, setEmlPdfError] = useState('')
+  const [emlSubmitError, setEmlSubmitError] = useState('')
+  const emlFileInput = useRef(null)
+  const emlPdfInput = useRef(null)
   const [mailList, setMailList] = useState(null)
   const [mailNext, setMailNext] = useState(null)
   const [selectedMail, setSelectedMail] = useState('')
@@ -165,8 +173,10 @@ export default function Dynamic() {
   const action = async (name, work) => {
     setBusy(name); setError(''); setNotice('')
     if (name === 'experiment') setExperimentError('')
+    if (name === 'eml-experiment') setEmlSubmitError('')
     try { await work() } catch (e) {
       if (name === 'experiment') setExperimentError(e.message)
+      else if (name === 'eml-experiment') setEmlSubmitError(e.message)
       else setError(e.message)
     } finally { setBusy('') }
   }
@@ -274,7 +284,7 @@ export default function Dynamic() {
     </section>
 
     <DynamicTools />
-    <details className="panel dynamic-experiment"><summary>수동 실험 · 내 메일 선택 또는 직접 입력</summary>
+    <details className="panel dynamic-experiment"><summary>수동 실험 · 내 메일 선택, EML 파일 또는 직접 입력</summary>
       <div className="panel-body dynamic-stack">
         <div><h3>연동된 받은편지함에서 선택</h3><p className="note">1차 분류 없이 선택한 메일 한 건을 동적 검사합니다. 메일 내용과 검사 결과가 로컬 실험 서버에 기록될 수 있습니다.</p></div>
         <div><button type="button" className="btn" disabled={!!busy} onClick={() => action('mail-list', () => loadMails())}>{busy === 'mail-list' ? '불러오는 중…' : '내 메일 목록 불러오기'}</button></div>
@@ -290,7 +300,49 @@ export default function Dynamic() {
         </> : <p className="note">받은편지함에 메일이 없습니다.</p>)}
         <p className="note">Gmail이 연결되지 않았다면 <a href="#/settings">설정</a>에서 먼저 연결하세요. 모델을 선택하고 설정을 저장해야 검사를 실행할 수 있습니다.</p>
       </div>
-      <form className="panel-body dynamic-stack" onSubmit={(e) => { e.preventDefault(); action('experiment', async () => { const pdf = experimentPdf ? { filename: experimentPdf.name, data: await readPdf(experimentPdf) } : undefined; await save(); const data = await dynamic('/experiments', { method: 'POST', body: { ...email, ...(pdf && { pdf }) } }); await loadJobs(); selectJob(data.job); setNotice('실험을 대기열에 등록했습니다.') }) }}>
+      <form className="panel-body dynamic-stack" onSubmit={(e) => {
+        e.preventDefault()
+        action('eml-experiment', async () => {
+          const eml = { filename: emlFile.name, data: await readBase64File(emlFile, 'EML 파일') }
+          const pdf = emlPdf ? { filename: emlPdf.name, data: await readBase64File(emlPdf, 'PDF 파일') } : undefined
+          await save()
+          const data = await dynamic('/experiments', { method: 'POST', body: { eml, ...(pdf && { pdf }) } })
+          await loadJobs(); selectJob(data.job); setNotice('EML 파일 실험을 대기열에 등록했습니다.')
+        })
+      }}>
+        <h3>EML 파일 업로드</h3><p className="note">정적 파일 검사와 동일하게 EML 본문·HTML 주석·내장 PDF를 추출해 1차 분류 없이 동적 검사합니다. 별도 PDF를 함께 추가할 수 있습니다.</p>
+        <label>메일 파일 (필수)<input ref={emlFileInput} type="file" accept=".eml,message/rfc822" disabled={!!busy} aria-describedby={emlError ? 'experiment-eml-help experiment-eml-error' : 'experiment-eml-help'} onChange={(e) => {
+          const file = e.target.files?.[0]
+          setEmlFile(null); setEmlSubmitError('')
+          if (!file) { setEmlError(''); return }
+          if (!file.name.toLowerCase().endsWith('.eml')) { setEmlError('EML 파일을 선택해 주세요.'); return }
+          if (file.size > EML_LIMIT) { setEmlError('EML 파일은 2 MB 이하여야 합니다.'); return }
+          setEmlError(''); setEmlFile(file)
+        }} /></label>
+        <label>PDF 첨부 (선택 사항)<input ref={emlPdfInput} type="file" accept=".pdf,application/pdf" disabled={!!busy} aria-describedby={emlPdfError ? 'experiment-eml-help experiment-eml-pdf-error' : 'experiment-eml-help'} onChange={(e) => {
+          const file = e.target.files?.[0]
+          setEmlPdf(null); setEmlSubmitError('')
+          if (!file) { setEmlPdfError(''); return }
+          if (!file.name.toLowerCase().endsWith('.pdf')) { setEmlPdfError('PDF 파일을 선택해 주세요.'); return }
+          if (file.size > PDF_LIMIT) { setEmlPdfError('PDF 파일은 1 MB 이하여야 합니다.'); return }
+          setEmlPdfError(''); setEmlPdf(file)
+        }} /></label>
+        <p id="experiment-eml-help" className="note">EML 최대 2 MB · PDF 각각 최대 1 MB, 20페이지 · 총 4개, 추출 텍스트 합계 4만 자. EML에 같은 PDF가 있으면 한 번만 포함합니다.</p>
+        {emlError && <p id="experiment-eml-error" className="dynamic-notice error" role="alert">{emlError}</p>}
+        {emlPdfError && <p id="experiment-eml-pdf-error" className="dynamic-notice error" role="alert">{emlPdfError}</p>}
+        {(emlFile || emlError || emlPdf || emlPdfError) && <div className="ctl-row">
+          {(emlFile || emlError) && <button type="button" className="btn" disabled={!!busy} onClick={() => {
+            emlFileInput.current.value = ''; setEmlFile(null); setEmlError(''); setEmlSubmitError('')
+          }}>EML 파일 제거</button>}
+          {(emlPdf || emlPdfError) && <button type="button" className="btn" disabled={!!busy} onClick={() => {
+            emlPdfInput.current.value = ''; setEmlPdf(null); setEmlPdfError(''); setEmlSubmitError('')
+          }}>PDF 첨부 제거</button>}
+        </div>}
+        {emlSubmitError && <p className="dynamic-notice error" role="alert">{emlSubmitError}</p>}
+        {ready && !form.model && <p className="note">실험을 실행하려면 모델을 선택해 주세요.</p>}
+        <div><button className="btn primary" disabled={!ready || !!busy || !form.model || !emlFile || !!emlError || !!emlPdfError}>{busy === 'eml-experiment' ? '등록 중…' : 'EML 파일로 실험 실행'}</button></div>
+      </form>
+      <form className="panel-body dynamic-stack" onSubmit={(e) => { e.preventDefault(); action('experiment', async () => { const pdf = experimentPdf ? { filename: experimentPdf.name, data: await readBase64File(experimentPdf, 'PDF 파일') } : undefined; await save(); const data = await dynamic('/experiments', { method: 'POST', body: { ...email, ...(pdf && { pdf }) } }); await loadJobs(); selectJob(data.job); setNotice('실험을 대기열에 등록했습니다.') }) }}>
         <h3>직접 입력</h3><p className="note">직접 입력한 메일은 1차 분류를 거치지 않으며 받은편지함 기록과 구분됩니다.</p>
         <label>제목<input value={email.subject} maxLength="4096" onChange={(e) => setEmail((p) => ({ ...p, subject: e.target.value }))} /></label>
         <label>메일 본문<textarea rows="7" required maxLength="300000" value={email.body} onChange={(e) => setEmail((p) => ({ ...p, body: e.target.value }))} /></label>

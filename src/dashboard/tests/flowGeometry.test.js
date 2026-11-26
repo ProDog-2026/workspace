@@ -1,6 +1,14 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { containerBounds, flowLayout, flowEdgePath } from '../src/flowGeometry.js'
+import { activeFlowEdge, containerBounds, flowLayout, flowEdgePath } from '../src/flowGeometry.js'
+
+test('only the latest connection into a waiting node is active', () => {
+  assert.deepEqual(activeFlowEdge({ current: 'llm', path: ['llm', 'tools', 'llm'], done: false }), { source: 'tools', target: 'llm' })
+  assert.deepEqual(activeFlowEdge({ current: 'first', path: ['first'], done: false }), { source: '__start__', target: 'first' })
+  assert.equal(activeFlowEdge({ current: null, path: ['first', 'last'], done: true }), null)
+  assert.equal(activeFlowEdge({ current: 'first', path: ['first'], done: true }), null)
+  assert.equal(activeFlowEdge({ current: 'other', path: ['first'], done: false }), null)
+})
 
 test('worker steps are inside the container boundary and the LLM gateway is outside', () => {
   const nodes = ['spawn_container', 'execute_tools', 'agent_final', 'llm_gateway', 'collect_evidence'].map((id) => ({ id }))

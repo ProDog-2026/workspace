@@ -152,7 +152,7 @@ class DynamicService:
 
     async def enqueue(
         self, owner, *, mail=None, detection=None, mode=None, email=None, retry=False, manual=False,
-        experiment_pdf=False,
+        experiment_pdf=False, experiment_meta=None,
     ):
         options, prompt_hash = await self.options(owner)
         pdf_texts = mail.get("pdf_texts", []) if mail and not manual else []
@@ -194,17 +194,24 @@ class DynamicService:
             if retry and existing:
                 # New attempts keep the earlier evidence available in history.
                 key = fingerprint([key, existing["id"]])
+            meta = experiment_meta or {}
             data = {
                 "source": ("gmail_manual" if manual else "gmail") if mail else "experiment",
                 "mail_id": mail["id"] if mail else None,
                 "body_hash": mail["body_hash"] if mail else None,
                 "subject": mail.get("subject", "") if mail else email["subject"],
-                "warnings": mail.get("warnings", []) if mail else [],
-                "truncated": mail.get("truncated", False) if mail else False,
+                "warnings": mail.get("warnings", []) if mail else meta.get("warnings", []),
+                "truncated": mail.get("truncated", False) if mail else meta.get("truncated", False),
                 "attachments_count": (
-                    len(mail.get("attachments", [])) if mail else int(experiment_pdf)
+                    len(mail.get("attachments", []))
+                    if mail
+                    else meta.get("attachments_count", int(experiment_pdf))
                 ),
-                "pdf_attachments_count": len(pdf_texts) if mail else int(experiment_pdf),
+                "pdf_attachments_count": (
+                    len(pdf_texts)
+                    if mail
+                    else meta.get("pdf_attachments_count", int(experiment_pdf))
+                ),
                 "static_detection": detection,
                 "observation": "unknown",
                 "error_code": None,

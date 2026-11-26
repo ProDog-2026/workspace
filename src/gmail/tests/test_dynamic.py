@@ -179,6 +179,97 @@ def test_experiment_rejects_unreadable_pdf(setup, payload, code):
     assert not service.submitted
 
 
+def test_experiment_eml_extracts_body_and_pdfs_without_storing_raw_input(setup):
+    from email.message import EmailMessage
+
+    client, service, config = setup
+    embedded = pdf_bytes("Synthetic embedded PDF")
+    extra = pdf_bytes("Synthetic extra PDF")
+    mail = EmailMessage()
+    mail["Subject"] = "Synthetic EML subject"
+    mail["From"] = "sender@example.test"
+    mail.set_content("Synthetic plain body")
+    mail.add_alternative("<html><!-- Synthetic HTML comment --></html>", subtype="html")
+    mail.add_attachment(embedded, maintype="application", subtype="pdf", filename="embedded.pdf")
+    raw_eml = base64.b64encode(mail.as_bytes()).decode()
+
+    # Matching supplemental PDF is deduplicated and included once.
+    first = change(client, "/api/dynamic/experiments", {
+        "eml": {"filename": "sample.eml", "data": raw_eml},
+        "pdf": {"filename": "same.pdf", "data": base64.b64encode(embedded).decode()},
+    })
+    assert first.status_code == 202, first.text
+    job = first.json()["job"]
+    assert job["source"] == "experiment"
+    assert job["subject"] == "Synthetic EML subject"
+    assert job["attachments_count"] == 1
+    assert job["pdf_attachments_count"] == 1
+    assert wait_job(client, job["id"])["status"] == "completed"
+    submitted = service.submitted[-1]["email"]
+    assert submitted["subject"] == "Synthetic EML subject"
+    assert "UNTRUSTED EMAIL DATA" in submitted["body"]
+    assert "sender@example.test" in submitted["body"]
+    assert "Synthetic plain body" in submitted["body"]
+    assert "Synthetic HTML comment" in submitted["body"]
+    assert submitted["body"].count("Synthetic embedded PDF") == 1
+    db_bytes = config.database_path.read_bytes()
+    assert b"Synthetic plain body" not in db_bytes
+    assert b"Synthetic embedded PDF" not in db_bytes
+
+    # Distinct supplemental PDF is appended in addition to the embedded PDF.
+    second = change(client, "/api/dynamic/experiments", {
+        "eml": {"filename": "sample.eml", "data": raw_eml},
+        "pdf": {"filename": "extra.pdf", "data": base64.b64encode(extra).decode()},
+    })
+    assert second.status_code == 202, second.text
+    job2 = second.json()["job"]
+    assert job2["attachments_count"] == 2
+    assert job2["pdf_attachments_count"] == 2
+    assert wait_job(client, job2["id"])["status"] == "completed"
+    body2 = service.submitted[-1]["email"]["body"]
+    assert "UNTRUSTED PDF ATTACHMENT 1\nSynthetic embedded PDF" in body2
+    assert "UNTRUSTED PDF ATTACHMENT 2\nSynthetic extra PDF" in body2
+
+
+@pytest.mark.parametrize("payload,code", [
+    (
+        {
+            "eml": {
+                "filename": "bad.txt",
+                "data": base64.b64encode(b"Subject: x\r\n\r\nhi").decode(),
+            }
+        },
+        "invalid_file",
+    ),
+    (
+        {
+            "eml": {
+                "filename": "bad.eml",
+                "data": base64.b64encode(b"not an rfc5322 email").decode(),
+            }
+        },
+        "invalid_eml",
+    ),
+    (
+        {
+            "eml": {
+                "filename": "ok.eml",
+                "data": base64.b64encode(b"Subject: ok\r\nFrom: a@example.test\r\n\r\nhi").decode(),
+            },
+            "pdf": {"filename": "bad.pdf", "data": base64.b64encode(b"not a pdf").decode()},
+        },
+        "pdf_invalid",
+    ),
+    ({"subject": "empty", "body": "   "}, "invalid_request"),
+])
+def test_experiment_rejects_invalid_eml_or_empty_body(setup, payload, code):
+    client, service, _ = setup
+    response = change(client, "/api/dynamic/experiments", payload)
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == code
+    assert not service.submitted
+
+
 def test_get_never_starts_container(setup):
     client, service, _ = setup
     mail_id(client)
