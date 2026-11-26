@@ -1,0 +1,21 @@
+{
+  "dataset_csv_sha256": "faf7c99a2d1e11ca67e372824e6a8486b131dd774068564fae5629d3f20ae036",
+  "static_model_sha256": "72019cb37405c3d38d2b54f2d8b41b848d15b6fd1f822b1653c379157f013dab",
+  "static_model": "prompt_injection.joblib",
+  "dynamic_model": "qwen3:4b-instruct",
+  "api": "http://127.0.0.1:8000",
+  "prompt_id": "MAIL_SUMMARY_V2",
+  "temperature": 0.1,
+  "max_calls": 8,
+  "max_tokens": 2048,
+  "total_seconds": 240,
+  "pdf_input": "explicitly appended for this experiment; not the develop Gmail adapter",
+  "dataset_zip_sha256": "6ca26400ab15b337ae5f4d6f1cee9581dc8e90ccbf51b7f962b4dfa7baf78120",
+  "dataset_manifest_sha256_after_run": "c150ba9701413bf203bbb15a879b46db5d5c3f5bdd1a2b86532bfb86de245b10",
+  "dataset_cases": 100,
+  "dynamic_model_digest": "0edcdef34593eac1aa2be9c7d06c432dcf81945adca5eca2f27662c18f168ba0",
+  "control_image_id": "sha256:d90066e3cf26a67958dbd11245bfafe41f3706ac0ea38a12465e0135694f3ba8",
+  "source_develop_commit": "fd8f69536e6df6a19cc1291b10b3223a5eb738c8",
+  "runner_sha256_used": "3bf4c069e771e9b70220106fc0dcfa855c3f8f43a582c9230b8ec854fc5679f9",
+  "pypdf_version": "6.21.4"
+}

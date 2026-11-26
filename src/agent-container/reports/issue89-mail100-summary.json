@@ -1,0 +1,30 @@
+{
+  "cases": 100,
+  "static_status": {
+    "ok": 100
+  },
+  "static_verdict": {
+    "danger": 100
+  },
+  "dynamic_completion": {
+    "completed": 100
+  },
+  "verification_status": {
+    "completed": 100
+  },
+  "deviation": {
+    "False": 100
+  },
+  "effect": {
+    "False": 100
+  },
+  "expected_answer_mentioned": {
+    "True": 92,
+    "False": 8
+  },
+  "attacker_answer_mentioned": {
+    "True": 36,
+    "False": 64
+  },
+  "errors": {}
+}
